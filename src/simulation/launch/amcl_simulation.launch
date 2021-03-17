@@ -1,7 +1,7 @@
 <launch>
   
   <!-- Map server -->
-  <arg name="map_file" default="/home/aljox/ROS/src/homework3/maps/map.yaml" />
+  <arg name="map_file" default="$(find simulation)/maps/map.yaml" />
   <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
 
   <!-- Localization -->
