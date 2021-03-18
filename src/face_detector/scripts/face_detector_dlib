@@ -1,0 +1,157 @@
+#!/usr/bin/python3
+
+import sys
+import rospy
+import dlib
+import cv2
+import numpy as np
+
+import tf2_geometry_msgs
+import tf2_ros
+
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import PointStamped, Vector3, Pose
+from cv_bridge import CvBridge, CvBridgeError
+
+import message_filters
+from face_detector.msg import FaceDetected
+
+class face_detector_dlib:
+    def __init__(self):
+        rospy.init_node('face_localizer', anonymous=True)
+
+        # An object we use for converting images between ROS format and OpenCV format
+        self.bridge = CvBridge()
+
+        # Object we use for transforming between coordinate frames
+        self.tf_buf = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buf)
+
+        # The function for performin HOG face detection
+        self.face_detector = dlib.get_frontal_face_detector()
+
+        # A help variable for holding the dimensions of the image
+        self.dims = (0, 0, 0)
+
+        # Detection publisher
+        self.detection_publisher = rospy.Publisher('face_detection', FaceDetected);
+
+        # Image subscribers
+        self.rgb_subscriber = message_filters.Subscriber("/camera/rgb/image_raw", Image)
+        self.depth_subscriber = message_filters.Subscriber("/camera/depth/image_raw", Image)
+
+        # Sync rbg and depth message
+        self.time_sync = message_filters.TimeSynchronizer([self.rgb_subscriber, self.depth_subscriber], 10)
+        self.time_sync.registerCallback(self.register_images)
+
+        self.rgb_message = None
+        self.depth_message = None
+    
+
+    def register_images(self, rgb_message, depth_message):   
+        self.rgb_message = rgb_message
+        self.depth_message = depth_message
+
+
+    def get_pose(self,coords,dist,stamp):
+        # Calculate the position of the detected face
+        k_f = 554 # kinect focal length in pixels
+
+        x1, x2, y1, y2 = coords
+
+        face_x = self.dims[1] / 2 - (x1+x2)/2.
+        face_y = self.dims[0] / 2 - (y1+y2)/2.
+
+        angle_to_target = np.arctan2(face_x,k_f)
+
+        # Get the angles in the base_link relative coordinate system
+        x, y = dist*np.cos(angle_to_target), dist*np.sin(angle_to_target)
+
+        # Define a stamped message for transformation - in the "camera rgb frame"
+        point_s = PointStamped()
+        point_s.point.x = -y
+        point_s.point.y = 0
+        point_s.point.z = x
+        point_s.header.frame_id = "camera_rgb_optical_frame"
+        point_s.header.stamp = stamp
+
+        # Get the point in the "map" coordinate system
+        try:
+            point_world = self.tf_buf.transform(point_s, "map")
+
+            faceDetectedMsg = FaceDetected()
+            faceDetectedMsg.header.frame_id = "map"
+            faceDetectedMsg.header.stamp = stamp
+            faceDetectedMsg.world_x = point_world.point.x
+            faceDetectedMsg.world_y = point_world.point.y
+            faceDetectedMsg.world_z = point_world.point.z
+            
+        except Exception as e:
+            faceDetectedMsg = FaceDetected()
+            print(e)
+
+        return faceDetectedMsg
+    
+
+    def find_faces(self):
+        rospy.loginfo('New image processing started')
+
+        if((self.rgb_message is not None) or (self.depth_message is not None)):
+            # Convert the images into a OpenCV (numpy) format
+            try:
+                # rgb_image = self.bridge.imgmsg_to_cv2(rgb_image_message, "bgr8")
+                rgb_image = self.bridge.imgmsg_to_cv2(self.rgb_message, "bgr8")
+            except CvBridgeError as e:
+                print(e)
+
+            try:
+                # depth_image = self.bridge.imgmsg_to_cv2(depth_image_message, "32FC1")
+                depth_image = self.bridge.imgmsg_to_cv2(self.depth_message, "32FC1")
+            except CvBridgeError as e:
+                print(e)
+        else:
+            return 0
+
+        # Set the dimensions of the image
+        self.dims = rgb_image.shape
+
+        # Detect the faces in the image
+        face_rectangles = self.face_detector(rgb_image, 0)
+
+        # For each detected face, extract the depth from the depth image
+        for face_rectangle in face_rectangles:
+            rospy.loginfo('Face detected')
+
+            # The coordinates of the rectanle
+            x1 = face_rectangle.left()
+            x2 = face_rectangle.right()
+            y1 = face_rectangle.top()
+            y2 = face_rectangle.bottom()
+
+            # Extract region containing face
+            face_region = rgb_image[y1:y2,x1:x2]
+
+            # Find the distance to the detected face
+            face_distance = float(np.nanmean(depth_image[y1:y2,x1:x2]))
+
+            rospy.loginfo('Distance to face %f', face_distance)
+
+            # Get the time that the depth image was recieved
+            depth_time = self.depth_message.header.stamp
+
+            # Find the location of the detected face
+            faceDetectionMsg = self.get_pose((x1,x2,y1,y2), face_distance, depth_time)
+            self.detection_publisher.publish(faceDetectionMsg)
+
+def main():
+    face_detector = face_detector_dlib()
+
+    rate = rospy.Rate(1)
+    while not rospy.is_shutdown():
+        face_detector.find_faces()
+        rate.sleep()
+
+    cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    main()

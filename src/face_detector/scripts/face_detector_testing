@@ -1,0 +1,16 @@
+#!/usr/bin/python3
+
+import rospy
+from face_detector.msg import FaceDetected
+
+def callback(data):
+    rospy.loginfo('Time: %f, FrameID: %s, worldX: %3.5f, worldY: %3.5f, worldZ: %3.5f', 
+        data.header.stamp.to_sec(), data.header.frame_id, data.world_x, data.world_y, data.world_z)
+
+def main():
+    rospy.init_node('face_detection_tester', anonymous=True)
+    rospy.Subscriber('face_detection', FaceDetected, callback);
+    rospy.spin()
+
+if __name__ == '__main__':
+    main()
