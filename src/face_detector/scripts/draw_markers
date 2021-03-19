@@ -1,0 +1,96 @@
+#!/usr/bin/python3
+
+import sys
+import rospy
+import dlib
+import cv2
+import numpy as np
+import tf2_geometry_msgs
+import tf2_ros
+import math
+#import matplotlib.pyplot as plt
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import PointStamped, Vector3, Pose
+from cv_bridge import CvBridge, CvBridgeError
+from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import ColorRGBA 
+from face_detector.msg import FaceDetected
+
+class Markers: 
+    def __init__(self):
+
+        # Marker array object used for showing markers in Rviz
+        self.marker_array = MarkerArray()
+        self.marker_num = 1 
+
+        # Publiser for the visualization markers
+        self.markers_pub = rospy.Publisher('face_markers', MarkerArray, queue_size=1000) 
+
+    def drawMarkers(self, pose):
+        if pose is not None:
+            # Create a marker used for visualization
+            self.marker_num += 1
+            marker = Marker()
+            marker.header.stamp = rospy.Time(0)
+            marker.header.frame_id = 'map'
+            marker.pose = pose
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.frame_locked = False
+            marker.lifetime = rospy.Duration.from_sec(10)
+            marker.id = self.marker_num 
+            marker.scale = Vector3(0.1, 0.1, 0.1)
+            marker.color = ColorRGBA(0, 1, 0, 1) 
+            if (len(self.marker_array.markers) == 0):
+                print("First one")
+                self.marker_array.markers.append(marker)
+            else:
+                print("More than one") 
+                exists = False
+                index = 0
+
+                count = 0
+                for mark in self.marker_array.markers: 
+                    distanceM = math.sqrt((mark.pose.position.x - pose.position.x)**2 + (mark.pose.position.y - pose.position.y)**2 + (mark.pose.position.z - pose.position.z)**2)
+                    #print(distanceM)
+                    if (distanceM < 1):
+                        exists = True
+                        index = count
+                    count+=1
+                if (exists):
+                    print("Already exist") 
+                    avgX = (self.marker_array.markers[index].pose.position.x + marker.pose.position.x)/2 
+                    avgY = (self.marker_array.markers[index].pose.position.y + marker.pose.position.y)/2 
+                    avgZ = (self.marker_array.markers[index].pose.position.z + marker.pose.position.z)/2 
+
+                    position = Pose()
+                    position.position.x = avgX
+                    position.position.y = avgY
+                    position.position.z = avgZ
+
+                    self.marker_array.markers[index].pose = position
+                else:
+                    self.marker_array.markers.append(marker)
+
+            self.markers_pub.publish(self.marker_array)
+
+def callback(data, args):
+    marker = args
+
+    pose = Pose()
+    pose.position.x = data.world_x
+    pose.position.y = data.world_y
+    pose.position.z = data.world_z 
+    marker.drawMarkers(pose)
+
+    #rospy.loginfo('Time: %f, FrameID: %s, worldX: %3.5f, worldY: %3.5f, worldZ: %3.5f', 
+    #    data.header.stamp.to_sec(), data.header.frame_id, data.world_x, data.world_y, data.world_z)
+
+def main(): 
+    marker = Markers()
+    rospy.init_node('face_detection_tester', anonymous=True)
+    rospy.Subscriber('face_detection', FaceDetected, callback, (marker));
+    rospy.spin()
+
+if __name__ == '__main__':
+    main()
