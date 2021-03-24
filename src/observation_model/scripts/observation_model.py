@@ -98,11 +98,12 @@ class detection_data:
 
 # distance: starting distance in meters - round to meters!
 class detection_statistic:
-    def __init__(self, videoName, distance, frameCount):
+    def __init__(self, videoName, detectorName, distance, frameCount):
         self.centerOffsetMargin = 0.2
         
 
         self.videoName = videoName
+        self.detectorName = detectorName
         self.distance = distance
         self.frameCount = frameCount
         self.measureArea = round(frameCount / distance) + 1 # measure for each meter
@@ -152,16 +153,40 @@ class detection_statistic:
         print("False negative: ", self.falseNegative)
         print("Missed frames:", self.missedFrameIndices)
 
+    def file_output(self):
+        file = open("../results/" + self.detectorName + ".txt", "a")
+        file.write("-----------------------------------------------\n")
+        file.write("Video name: " + self.videoName + "\n")
+        file.write("Distance: " + str(self.distance) + "m \n")
+        file.write("Frame count: " + str(self.frameCount) + "\n")
+        file.write("True positives: [" + ', '.join(map(str, self.turePositive)) + "] \n")
+        file.write("False positive: [" + ', '.join(map(str, self.falsePositive)) + "] \n")
+        file.write("False negative: [" + ', '.join(map(str, self.falseNegative)) + "] \n")
+        file.write("Missed frames: [" + ', '.join(map(str, self.missedFrameIndices)) + "] \n")
+        file.write("\n")
+        file.close()
+
+
+# parse distances -> 0, 30 = 4m, 50 = 3m
+def get_distance(resource):
+    index = resource.rfind('_')
+    recordingAngle = int(resource[index + 1 : -4])
+    if (recordingAngle == 0) or (recordingAngle == 30):
+        return 4
+    else:
+        return 3 
 
 # Dnn - RED bounding box
 # Dlib - GREEN bounding box
 def main():
     statisticsDnn = []
     statisticsDlib = []
+
+    fileNameDnn = "face_detector_dnn"
+    fileNameDlib = "face_detector_dlib"
     faceDetectorDnn = face_detector_dnn()
     faceDetectorDlib = face_detector_dlib()
 
-    # TODO: parse distances -> 0, 30 = 4m, 50 = 3m
     resourceVideos = ["../video/ArtificialLight_0.mp4",
                       "../video/ArtificialLight_30.mp4",
                       "../video/ArtificialLight_-30.mp4",
@@ -199,8 +224,9 @@ def main():
         frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Init statistic
-        statisticDnn = detection_statistic(resource, 4, frameCount)
-        statisticDlib = detection_statistic(resource, 4, frameCount)
+        distance = get_distance(resource)
+        statisticDnn = detection_statistic(resource, fileNameDnn, distance, frameCount)
+        statisticDlib = detection_statistic(resource, fileNameDlib, distance, frameCount)
         
         frameIndex = 1
         rval, frame = cap.read()
@@ -222,13 +248,14 @@ def main():
 
         statisticsDnn.append(statisticDnn)
         statisticsDlib.append(statisticsDlib)
+
         statisticDnn.console_output()
         statisticDlib.console_output()
-        
+
+        statisticDnn.file_output()
+        statisticDlib.file_output()
+
         cv2.destroyWindow(winName)
-
-
-    # TODO: output to file
 
 
 if __name__ == '__main__':
