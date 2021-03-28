@@ -44,11 +44,11 @@ class Markers:
 
             if (len(self.marker_array.markers) == 0 or exists == False): 
                 # create a marker for new face
-                print("obstaja")
+                print("nov")
                 self.marker_array.markers.append(marker)
             else: 
                 # update the existing marker 
-                print("nov")
+                print("obstaja")
                 self.marker_array.markers[index].pose = pose
 
             self.markers_pub.publish(self.marker_array)
