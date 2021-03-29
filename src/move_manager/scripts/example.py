@@ -4,6 +4,8 @@ from move_manager.mover import Mover
 
 if __name__ == '__main__':
 
+    rospy.init_node("mover_client")
+    
     m = Mover()
     m.follow_path()
 
