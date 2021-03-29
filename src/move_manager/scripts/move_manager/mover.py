@@ -4,7 +4,7 @@ import rospy
 import actionlib
 
 from enum import Enum
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Quaternion, Pose
 from std_msgs.msg import String
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 
@@ -23,6 +23,7 @@ class State(Enum):
     RECALLED = 8
     LOST = 9
 
+
 class Path():
     def __init__(self, points):
         self.nextPoint = 0
@@ -30,6 +31,7 @@ class Path():
 
 
     def get_next_point(self):
+        print(f"next point: {self.nextPoint}")
         return self.points[self.nextPoint][0], self.points[self.nextPoint][1]
 
 
@@ -38,6 +40,12 @@ class Path():
             self.nextPoint += 1
         else:
             self.nextPoint = 0
+    
+    def revert_point(self):
+        if self.nextPoint == 0:
+            self.nextPoint = len(self.points)-1
+        else:
+            self.nextPoint -= 1
 
 
 
@@ -47,7 +55,7 @@ class Mover():
         
         self.traveling = False
         self.is_following_path = False
-        self.current_pose = None
+        self.current_pose = Pose(Point(0,0,0), Quaternion(0,0,0,1))
         self.path = Path([
             (-1.471733808517456, 1.7823206186294556),
             (2.3780295848846436, 1.6542164087295532),
@@ -75,10 +83,10 @@ class Mover():
         rospy.loginfo(State(state))
         # print(result)
 
-        self.path.on_point_reached()
         self.traveling = False
 
         if self.is_following_path:
+            self.path.on_point_reached()
             self.move_to_next_point()
 
     # feedback callback
@@ -89,8 +97,9 @@ class Mover():
 
     # for easier access
     def move_to_next_point(self):
-        x, y = self.path.get_next_point()
-        self.move_to(x,y)
+        if not self.traveling:
+            x, y = self.path.get_next_point()
+            self.move_to(Point(x,y,0.0), Quaternion(0,0,0,1))
 
 
     # returns current pose of robot
@@ -99,7 +108,7 @@ class Mover():
 
 
     # used to move robot to point
-    def move_to(self, x, y):
+    def move_to(self, point, quat):
         if self.traveling:
             rospy.logwarn("robot is already trying to reach path. To cancel path call stop_robot() first.")
             return
@@ -109,13 +118,16 @@ class Mover():
         # lets move
         goal_msg = MoveBaseGoal()
         goal_msg.target_pose.header.frame_id = "map"
-        goal_msg.target_pose.pose.position.x = x
-        goal_msg.target_pose.pose.position.y = y
-        goal_msg.target_pose.pose.position.z = 0.0
-        goal_msg.target_pose.pose.orientation.w = 1.0
+        goal_msg.target_pose.pose.position.x = point.x
+        goal_msg.target_pose.pose.position.y = point.y
+        goal_msg.target_pose.pose.position.z = point.z
+        goal_msg.target_pose.pose.orientation.x = quat.x
+        goal_msg.target_pose.pose.orientation.y = quat.y
+        goal_msg.target_pose.pose.orientation.z = quat.z
+        goal_msg.target_pose.pose.orientation.w = quat.w
         goal_msg.target_pose.header.stamp = rospy.get_rostime()
 
-        rospy.loginfo(f"Moving to (x: {x}, y: {y})")
+        rospy.loginfo(f"Moving to (x: {point.x}, y: {point.y})")
         self.move_base_client.send_goal(goal_msg, self.on_goal_reached, None, self.on_goal_feedback)
 
 
@@ -132,6 +144,9 @@ class Mover():
     # stop following next goal (path or any other point)
     def stop_robot(self):
 
+        if self.is_following_path:
+            self.path.revert_point()
+        
         self.traveling = False
         self.is_following_path = False
 
