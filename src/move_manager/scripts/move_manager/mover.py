@@ -47,10 +47,11 @@ class Mover():
     def __init__(self):
         
         # init node
-        # rospy.init_node("mover_client")
+        #rospy.init_node("mover_client")
 
         self.traveling = False
         self.is_following_path = False
+        self.current_pose = None
         self.path = Path([
             (-1.471733808517456, 1.7823206186294556),
             (2.3780295848846436, 1.6542164087295532),
@@ -86,7 +87,7 @@ class Mover():
 
     # feedback callback
     def on_goal_feedback(self, feedback):
-        #rospy.loginfo(feedback)
+        self.current_pose = feedback.pose
         return
 
 
@@ -94,6 +95,11 @@ class Mover():
     def move_to_next_point(self):
         x, y = self.path.get_next_point()
         self.move_to(x,y)
+
+
+    # returns current pose of robot
+    def get_pose(self):
+        return self.current_pose
 
 
     # used to move robot to point
