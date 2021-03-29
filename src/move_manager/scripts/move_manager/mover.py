@@ -8,6 +8,10 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import String
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 
+# TODO get current state
+# TODO get current robot position
+# TODO add orientation to move_to
+
 class State(Enum):
     PENDING = 0
     ACTIVE = 1
@@ -43,7 +47,7 @@ class Mover():
     def __init__(self):
         
         # init node
-        rospy.init_node("mover_client")
+        # rospy.init_node("mover_client")
 
         self.traveling = False
         self.is_following_path = False

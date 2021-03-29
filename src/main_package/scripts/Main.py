@@ -1,21 +1,17 @@
 #!/usr/bin/python3 
 
 import sys
+import math
 import rospy
-import dlib
-import cv2
-import numpy as np
+from enum import Enum 
+from time import sleep
+
 import tf2_geometry_msgs
 import tf2_ros
-import math
-#import matplotlib.pyplot as plt
-from sensor_msgs.msg import Image
+
 from geometry_msgs.msg import PointStamped, Vector3, Pose
-from cv_bridge import CvBridge, CvBridgeError
-from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import ColorRGBA 
 from face_detector.msg import FaceDetected, Detected 
-from enum import Enum 
+from move_manager.mover import Mover
 
 class State(Enum): 
     STATIONARY = 1
@@ -48,6 +44,8 @@ class MainNode:
         self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.faceDetection)
         self.face_detection_marker_publisher = rospy.Publisher('detection', Detected, queue_size=10);  
 
+        self.mover = Mover()
+
 
     # Processes that need to be updated every iteration 
     def update(self):
@@ -55,23 +53,41 @@ class MainNode:
 
     # Act based on current state
     def execute(self):
+        rospy.loginfo(State(self.state))
+
         if self.state == State.STATIONARY:
-            print("Stationary")
-        elif self.state == State.EXPLORE:
-            print("Explore")
-        elif self.state == State.FACE_DETECTED:
-            print("Face detected")
-            
-            self.greetFace(self.faces[self.new_face_detection_index])
+            self.mover.follow_path()
             self.state = State.EXPLORE
+            return
+
+        elif self.state == State.EXPLORE:
+            # Check if robot had some error
+
+            return
+            
+        elif self.state == State.FACE_DETECTED:            
+            self.mover.stop_robot()
+            self.greetFace(self.faces[self.new_face_detection_index])
+            return
 
         elif self.state == State.GREET:
-            print("Greet face")
+            print("Greeting")
+            sleep(10)
 
+            if(not self.mover.traveling):
+                self.state = State.STATIONARY
+
+            return
 
     #----------------------actions--------------------------
     def greetFace(self, face):
         self.state = State.GREET
+        face.greeted = True
+
+
+        # self.mover.move_to(face.x,  face.y)
+        self.mover.is_following_path = False
+
         # TODO compute how to turn and move to greet a face
         #     # position
         #     greetX = 0 
@@ -81,7 +97,6 @@ class MainNode:
         #     # rotation of a robot 
         #     rotation = {'r1':0.000, 'r2':0.000, 'r3':0.000, 'r4':0.000} 
 
-        face.greeted = True
 
 
     #----------------call-back-functions--------------------
@@ -101,10 +116,13 @@ class MainNode:
 
         # first detected face (publish)
         if (len(self.faces) == 0):
-            print("First face detected")
-            self.state = State.FACE_DETECTED
+            print("New face instance detected")
             self.faces.append(detectedFace)
-            self.face_detection_marker_publisher.publish(detectedFace.x, detectedFace.y, detectedFace.z, exists, index)
+
+            if(self.face_detection_treshold == 1):
+                self.state = State.FACE_DETECTED
+                self.face_detection_marker_publisher.publish(detectedFace.x, detectedFace.y, detectedFace.z, exists, index)
+       
         else:
             count = 0
 
@@ -140,11 +158,11 @@ class MainNode:
 
             else:
                 print("New face instance detected") 
-                self.state = State.FACE_DETECTED
-                self.faces.append(detectedFace)
-
-                # Publish the new coordinates 
                 self.face_detection_marker_publisher.publish(detectedFace.x, detectedFace.y, detectedFace.z, exists, index)
+
+                if(self.face_detection_treshold == 1):
+                    self.state = State.FACE_DETECTED
+                    self.faces.append(detectedFace)
 
         #rospy.loginfo('worldX: %3.5f, worldY: %3.5f, worldZ: %3.5f', data.face_x, data.face_y, data.face_z) 
 
