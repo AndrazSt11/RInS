@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   FaceDetected.msg
+  Detected.msg
 )
 
 generate_messages(DEPENDENCIES std_msgs)

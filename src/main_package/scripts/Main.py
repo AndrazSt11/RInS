@@ -5,6 +5,7 @@ import math
 import rospy
 from enum import Enum 
 from time import sleep
+from math import acos, sin, cos
 
 import tf2_geometry_msgs
 import tf2_ros
@@ -76,19 +77,19 @@ class MainNode:
             # pose of a detected face
             facePoint = self.faces[self.new_face_detection_index]
 
-            # pose and orientation of a robot
-            pointR = Point(robotPose.position.x, robotPose.position.y, robotPose.position.z)
-            orientationR = Quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w)
-
-            robotPoint = Pose(pointR, orientationR)
-
             # greet
-            greetPoint, greetOrientation = self.greetFace(robotPose, facePoint)
-            self.mover.move_to(greetPoint, greetOrientation)
+            #greetPoint, greetOrientation = self.greetFace(robotPose, facePoint)
+            #self.mover.move_to(greetPoint, greetOrientation)
+            
+            point, quat = self.on_face_detected(robotPose, facePoint)
+            self.mover.move_to(point, quat)
             self.state = State.GREET
             return
 
-        elif self.state == State.GREET: 
+        elif self.state == State.GREET:
+            if self.mover.traveling:
+                return
+
             soundhandle = SoundClient()
             rospy.sleep(1)
 
@@ -96,18 +97,13 @@ class MainNode:
             volume = 2.0
             s = "Hello"
 
-            #soundhandle.say(s, voice, volume)
-            #print("Greetings")
-
-            if(not self.mover.traveling):
-                # greet the face
-                soundhandle.say(s, voice, volume)
-                print("Greetings")
-                rospy.sleep(1)
-                sleep(2)
+            # greet the face
+            soundhandle.say(s, voice, volume)
+            print("Greetings")
+            rospy.sleep(1)
+            sleep(2)
                 
-                self.state = State.STATIONARY
-
+            self.state = State.STATIONARY
             return
 
     def euler_from_quaternion(self, x, y, z, w): 
@@ -135,14 +131,23 @@ class MainNode:
 
         return qx, qy, qz, qw
 
+
     #----------------------actions--------------------------
+    def on_face_detected(self, robot_pose, face_pose):
+        face_pose.greeted = True
+        robot_pos = np.array([robot_pose.position.x, robot_pose.position.y, robot_pose.position.z])
+        face_pos = np.array([face_pose.x, face_pose.y, face_pose.z])
+
+        forward = face_pos - robot_pos
+        forward_norm = forward / np.linalg.norm(forward)
+        
+        destination = (face_pos - forward_norm * 0.5) if np.linalg.norm(forward) > 0.5 else robot_pos
+
+        quat = quaternion_look_at(forward_norm)
+        return Point(destination[0], destination[1], destination[2]), quat
+
     def greetFace(self, robotPose, facePose):
-        #self.state = State.GREET
         facePose.greeted = True
-
-
-        # self.mover.move_to(face.x,  face.y)
-        self.mover.is_following_path = False
 
         # TODO compute how to turn and move to greet a face
         # position
@@ -190,7 +195,6 @@ class MainNode:
         # Determine when to ignore this callback
         if (self.state == State.FACE_DETECTED) or (self.state == State.GREET):
             return
-
 
         detectedFace = Face(data.world_x, data.world_y, data.world_z) 
 
@@ -249,6 +253,33 @@ class MainNode:
 
         #rospy.loginfo('worldX: %3.5f, worldY: %3.5f, worldZ: %3.5f', data.face_x, data.face_y, data.face_z) 
 
+
+def quaternion_create_from_axis_angle(axis, angle):
+        half_angle = angle * 0.5
+        s = sin(half_angle)
+
+        return Quaternion(
+            axis[0] * s,
+            axis[1] * s,
+            axis[2] * s,
+            cos(half_angle)
+        )
+
+
+def quaternion_look_at(forward_norm):
+    dot = np.dot(np.array([1,0,0]), forward_norm)
+
+    if abs(dot-(-1.0)) < 0.000001:
+        return Quaternion(0,0,1,3.14159265)
+    
+    if abs(dot-1.0) < 0.000001:
+        return Quaternion(0,0,0,1)
+
+    rot_angle = acos(dot)
+    rot_axis = np.cross(np.array([1,0,0]), forward_norm)
+    rot_axis = rot_axis / np.linalg.norm(rot_axis)
+    return quaternion_create_from_axis_angle(rot_axis, rot_angle)
+    
 
 def main():
     mainNode = MainNode()
