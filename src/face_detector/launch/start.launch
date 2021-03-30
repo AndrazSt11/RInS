@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="face_detector" type="face_detector_dnn" name="face_detector"  output="screen"/>
+  <node pkg="face_detector" type="draw_markers" name="draw_markers"  output="screen"/>
+  <node pkg="sound_play" type="soundplay_node.py" name="sound_play"  output="screen"/>
+</launch>
