@@ -55,7 +55,11 @@ class Mover():
         
         self.traveling = False
         self.is_following_path = False
+        
+        self.force_reach = True
+
         self.current_pose = Pose(Point(0,0,0), Quaternion(0,0,0,1))
+        self.goal_position = Point(0,0,0)
         self.path = Path([
             (-1.471733808517456, 1.7823206186294556),
             (2.3780295848846436, 1.6542164087295532),
@@ -81,18 +85,28 @@ class Mover():
     # callback that fires when goal is reached
     def on_goal_reached(self, state, result):
         rospy.loginfo(State(state))
-        # print(result)
 
         self.traveling = False
 
         if self.is_following_path:
-            self.path.on_point_reached()
+            if State(state) is State.SUCCEEDED:
+                self.path.on_point_reached()
+
             self.move_to_next_point()
+
 
     # feedback callback
     def on_goal_feedback(self, feedback):
         self.current_pose = feedback.base_position.pose
-        return
+
+        if not self.force_reach:
+            return
+
+        if abs(self.goal_position.x - self.current_pose.position.x) < 0.2:
+            if abs(self.goal_position.y - self.current_pose.position.y) < 0.2:
+                self.move_base_client.cancel_goal()
+                self.on_goal_reached(3, None)
+                print("FORCE REAHCED")
 
 
     # for easier access
@@ -120,12 +134,14 @@ class Mover():
         goal_msg.target_pose.header.frame_id = "map"
         goal_msg.target_pose.pose.position.x = point.x
         goal_msg.target_pose.pose.position.y = point.y
-        goal_msg.target_pose.pose.position.z = point.z
-        goal_msg.target_pose.pose.orientation.x = quat.x
-        goal_msg.target_pose.pose.orientation.y = quat.y
-        goal_msg.target_pose.pose.orientation.z = quat.z
-        goal_msg.target_pose.pose.orientation.w = quat.w
+        goal_msg.target_pose.pose.position.z = 0.0
+        goal_msg.target_pose.pose.orientation.x = 0
+        goal_msg.target_pose.pose.orientation.y = 0
+        goal_msg.target_pose.pose.orientation.z = 0
+        goal_msg.target_pose.pose.orientation.w = 1
         goal_msg.target_pose.header.stamp = rospy.get_rostime()
+
+        self.goal_position = goal_msg.target_pose.pose.position
 
         rospy.loginfo(f"Moving to (x: {point.x}, y: {point.y})")
         self.move_base_client.send_goal(goal_msg, self.on_goal_reached, None, self.on_goal_feedback)
@@ -144,8 +160,8 @@ class Mover():
     # stop following next goal (path or any other point)
     def stop_robot(self):
 
-        if self.is_following_path:
-            self.path.revert_point()
+        #if self.is_following_path:
+        #    self.path.revert_point()
         
         self.traveling = False
         self.is_following_path = False
