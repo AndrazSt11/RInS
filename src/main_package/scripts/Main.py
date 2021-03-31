@@ -25,11 +25,14 @@ class State(Enum):
     FINISH = 5 
 
 class Face:
-    def __init__(self, x, y, z):
+    def __init__(self, x, y, z, norm_x, norm_y):
         # coordinates of a detected face
         self.x = x
         self.y = y
         self.z = z 
+
+        self.norm_x = norm_x
+        self.norm_y = norm_y
 
         self.num_of_detections = 1
         self.greeted = False
@@ -62,6 +65,7 @@ class MainNode:
 
         if self.state == State.STATIONARY: 
             if (len(self.faces) == 3): 
+                self.mover.stop_robot() 
                 self.state = State.FINISH
                 return
 
@@ -118,7 +122,6 @@ class MainNode:
             return 
 
         elif self.state == State.FINISH: 
-            self.mover.stop_robot() 
             print("Dettected all faces") 
             sleep(10) 
             
@@ -151,23 +154,22 @@ class MainNode:
         return qx, qy, qz, qw
 
     #----------------------actions--------------------------
-    def on_face_detected(self, robot_pose, face_pose):
-        face_pose.greeted = True
-        robot_pos = np.array([robot_pose.position.x, robot_pose.position.y, robot_pose.position.z])
-        face_pos = np.array([face_pose.x, face_pose.y, face_pose.z])
+    # def on_face_detected(self, robot_pose, face_pose):
+    #     face_pose.greeted = True
+    #     robot_pos = np.array([robot_pose.position.x, robot_pose.position.y, robot_pose.position.z])
+    #     face_pos = np.array([face_pose.x, face_pose.y, face_pose.z])
 
-        forward = face_pos - robot_pos
-        forward_norm = forward / np.linalg.norm(forward)
+    #     forward = face_pos - robot_pos
+    #     forward_norm = forward / np.linalg.norm(forward)
         
-        destination = (face_pos - forward_norm * 0.5) if np.linalg.norm(forward) > 0.5 else robot_pos
+    #     destination = (face_pos - forward_norm * 0.5) if np.linalg.norm(forward) > 0.5 else robot_pos
 
-        quat = quaternion_look_at(forward_norm)
-        return Point(destination[0], destination[1], destination[2]), quat
+    #     quat = quaternion_look_at(forward_norm)
+    #     return Point(destination[0], destination[1], destination[2]), quat
 
     def greetFace(self, robotPose, facePose):
         #self.state = State.GREET
         facePose.greeted = True
-
 
         # self.mover.move_to(face.x,  face.y)
         self.mover.is_following_path = False
@@ -215,12 +217,21 @@ class MainNode:
     def faceDetection(self, data): 
 
         # Determine when to ignore this callback
-        if (self.state == State.FACE_DETECTED) or (self.state == State.GREET):
+        if (self.state == State.FACE_DETECTED) or (self.state == State.FINISH):
             return
 
+        # Computue face normal
+        robotPose = self.mover.get_pose()
 
-        detectedFace = Face(data.world_x, data.world_y, data.world_z) 
+        robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
+        facePoint_np = np.array([data.world_x, data.world_y])
+        face_normal = robotPoint_np - facePoint_np
+        face_normal = face_normal / np.linalg.norm(face_normal)
 
+        # Create face
+        detectedFace = Face(data.world_x, data.world_y, data.world_z, face_normal[0], face_normal[1]) 
+
+        # Process detection
         exists = False
         index = 0
 
@@ -239,8 +250,14 @@ class MainNode:
             # Checks if face already exists
             for face in self.faces:
                 distanceM = math.sqrt((face.x - detectedFace.x)**2 + (face.y - detectedFace.y)**2 + (face.z - detectedFace.z)**2) 
+                
+                # Dot product to check if normals on the same side
+                normalComparison = face.norm_x * detectedFace.norm_x + face.norm_y * detectedFace.norm_y
+                # print("---------------------NORMAL_DOT_PRODUCT-----------")
+                # print(normalComparison)
 
-                if (distanceM < 1):
+                # Face exists if correct distance away and its normal is aprox max 60 degrees different
+                if ((distanceM < 1) and (normalComparison > 0.5)):
                     face.num_of_detections += 1
                     exists = True
                     index = count
@@ -250,18 +267,30 @@ class MainNode:
             if (exists): 
                 print("Detected face already exists") 
 
+                # moving average
+                alpha = 0.15
+
                 # if already exists update the coordinates
-                avgX = (self.faces[index].x + detectedFace.x)/2 
-                avgY = (self.faces[index].y + detectedFace.y)/2 
-                avgZ = (self.faces[index].z + detectedFace.z)/2 
+                movAvgX = (self.faces[index].x * (1 - alpha)) + (detectedFace.x * alpha)
+                movAvgY = (self.faces[index].y * (1 - alpha)) + (detectedFace.y * alpha)
+                movAvgZ = (self.faces[index].z * (1 - alpha)) + (detectedFace.z * alpha)
 
-                self.faces[index].x = avgX
-                self.faces[index].y = avgY
-                self.faces[index].z = avgZ 
+                self.faces[index].x = movAvgX
+                self.faces[index].y = movAvgY
+                self.faces[index].z = movAvgZ 
 
-                self.face_detection_marker_publisher.publish(avgX, avgY, avgZ, exists, index)
+                self.face_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index)
 
-                if (self.faces[index].num_of_detections >= self.face_detection_treshold) and (not self.faces[index].greeted):
+                # update normal
+                org_normal = np.array([self.faces[index].norm_x, self.faces[index].norm_y])
+                new_normal = np.array([detectedFace.norm_x, detectedFace.norm_y])
+                updated_normal = org_normal + alpha * (new_normal - org_normal)
+                updated_normal = updated_normal / np.linalg.norm(updated_normal)
+                
+                self.faces[index].norm_x = updated_normal[0]
+                self.faces[index].norm_y = updated_normal[1]
+
+                if ((self.state != State.GREET) and self.faces[index].num_of_detections >= self.face_detection_treshold) and (not self.faces[index].greeted):
                     print("Tershold cleared - face detection signal to robot") 
                     self.state = State.FACE_DETECTED
                     self.new_face_detection_index = index
@@ -274,33 +303,30 @@ class MainNode:
                     self.state = State.FACE_DETECTED
                     self.faces.append(detectedFace)
 
-        #rospy.loginfo('worldX: %3.5f, worldY: %3.5f, worldZ: %3.5f', data.face_x, data.face_y, data.face_z) 
+# def quaternion_create_from_axis_angle(axis, angle):
+#         half_angle = angle * 0.5
+#         s = sin(half_angle)
 
-def quaternion_create_from_axis_angle(axis, angle):
-        half_angle = angle * 0.5
-        s = sin(half_angle)
+#         return Quaternion(
+#             axis[0] * s,
+#             axis[1] * s,
+#             axis[2] * s,
+#             cos(half_angle)
+#         )
 
-        return Quaternion(
-            axis[0] * s,
-            axis[1] * s,
-            axis[2] * s,
-            cos(half_angle)
-        )
+# def quaternion_look_at(forward_norm):
+#     dot = np.dot(np.array([1,0,0]), forward_norm)
 
-
-def quaternion_look_at(forward_norm):
-    dot = np.dot(np.array([1,0,0]), forward_norm)
-
-    if abs(dot-(-1.0)) < 0.000001:
-        return Quaternion(0,0,1,3.14159265)
+#     if abs(dot-(-1.0)) < 0.000001:
+#         return Quaternion(0,0,1,3.14159265)
     
-    if abs(dot-1.0) < 0.000001:
-        return Quaternion(0,0,0,1)
+#     if abs(dot-1.0) < 0.000001:
+#         return Quaternion(0,0,0,1)
 
-    rot_angle = acos(dot)
-    rot_axis = np.cross(np.array([1,0,0]), forward_norm)
-    rot_axis = rot_axis / np.linalg.norm(rot_axis)
-    return quaternion_create_from_axis_angle(rot_axis, rot_angle)
+#     rot_angle = acos(dot)
+#     rot_axis = np.cross(np.array([1,0,0]), forward_norm)
+#     rot_axis = rot_axis / np.linalg.norm(rot_axis)
+#     return quaternion_create_from_axis_angle(rot_axis, rot_angle)
 
 def main():
     mainNode = MainNode()
