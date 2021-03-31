@@ -257,7 +257,7 @@ class MainNode:
                 # print(normalComparison)
 
                 # Face exists if correct distance away and its normal is aprox max 60 degrees different
-                if ((distanceM < 1) and (normalComparison > 0.5)):
+                if ((distanceM < 1) and (normalComparison > 0.1)):
                     face.num_of_detections += 1
                     exists = True
                     index = count
@@ -296,12 +296,15 @@ class MainNode:
                     self.new_face_detection_index = index
 
             else:
-                print("New face instance detected") 
-                self.face_detection_marker_publisher.publish(detectedFace.x, detectedFace.y, detectedFace.z, exists, index)
+                if (self.state == State.GREET): 
+                    print("In greet state")
+                else:
+                    print("New face instance detected") 
+                    self.face_detection_marker_publisher.publish(detectedFace.x, detectedFace.y, detectedFace.z, exists, index)
 
-                if(self.face_detection_treshold == 1):
-                    self.state = State.FACE_DETECTED
-                    self.faces.append(detectedFace)
+                    if(self.face_detection_treshold == 1):
+                        self.state = State.FACE_DETECTED
+                        self.faces.append(detectedFace)
 
 # def quaternion_create_from_axis_angle(axis, angle):
 #         half_angle = angle * 0.5
@@ -340,4 +343,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
