@@ -105,7 +105,7 @@ class MainNode:
 
             voice = 'voice_kal_diphone'
             volume = 2.0
-            s = "Hello"
+            s = "Hello human, how are you today?"
 
             #soundhandle.say(s, voice, volume)
             #print("Greetings")
