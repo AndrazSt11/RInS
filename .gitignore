@@ -3,4 +3,9 @@ build/
 devel/
 src/CMakeLists.txt
 src/observation_model/video
+src/color_model/DataSet
+src/color_model/DataSetOriginal
+src/color_model/Models
+src/color_model/Results
 .catkin_workespace
+
