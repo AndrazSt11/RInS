@@ -1,5 +1,5 @@
 RIS: Observation model
-In this observartion model we have compared dlib CNN face detector and openCv dnn face detector.
+In this observartion model we have compared dlib HOG + SVM face detector and openCv dnn face detector.
 
 Experiment setup:
 Testing enviroment consisted of an image of human face placed on a wall and additional items such as books, plant and workout mat.

@@ -177,7 +177,7 @@ def get_distance(resource):
         return 3 
 
 # Dnn - RED bounding box
-# Dlib - GREEN bounding box
+# Dlib - GREEN bounding box - HOG + SVM
 def main():
     statisticsDnn = []
     statisticsDlib = []
