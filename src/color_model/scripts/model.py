@@ -11,6 +11,7 @@ from sklearn import ensemble
 from sklearn import tree 
 from sklearn import svm 
 from sklearn import neural_network
+from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split
 import joblib
 import texttable
@@ -102,14 +103,18 @@ def printResults(modelName, label_test, label_predicted, colors):
     file = open("../Results/modelResults.txt", "a")
     file.write("--------------------" + modelName + "------------------\n")
     file.write("Classification accuracy: " + np.array2string(metrics.accuracy_score(label_test, label_predicted, normalize=True)) + "\n")
-    file.write("Percision: " + np.array2string(metrics.precision_score(label_test, label_predicted, labels=range(0, len(colors), 1), average='micro')) + "\n")
-    file.write("Recall: " + np.array2string(metrics.recall_score(label_test, label_predicted, labels=range(0, len(colors), 1), average='micro')) + "\n")
+    file.write("Percision: " + np.array2string(metrics.precision_score(label_test, label_predicted, labels=range(0, len(colors), 1), average='macro')) + "\n")
+    file.write("Recall: " + np.array2string(metrics.recall_score(label_test, label_predicted, labels=range(0, len(colors), 1), average='macro')) + "\n")
    
     confusionMatrix = metrics.confusion_matrix(label_test, label_predicted, labels=range(0, len(colors), 1))
     printConfusionMatrix(file, confusionMatrix, colors)
 
     file.write("\n")
     file.close()
+
+    # Save confusion matrix as image
+    disp = ConfusionMatrixDisplay(confusionMatrix, display_labels=colors).plot()
+    plt.savefig("confusion_matrix_" + modelName + ".pdf")
 
 def trainKnn(numNeighbours, hist_train, hist_test, label_train, label_test, colors, colorMode):
     modelName = "Knn" + str(numNeighbours) + "neighbours" + colorMode
@@ -235,9 +240,6 @@ def main():
 
     print("MLP-HSV")
     trainMLP(hist_train_HSV, hist_test_HSV, label_train_HSV, label_test_HSV, colors, "HSV")
-
-    # TODO: 
-    # Report
 
 
 if __name__ == '__main__':
