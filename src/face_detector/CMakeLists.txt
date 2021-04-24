@@ -18,6 +18,7 @@ add_message_files(
   FILES
   FaceDetected.msg
   Detected.msg
+  CylinderD.msg
 )
 
 generate_messages(DEPENDENCIES std_msgs)
