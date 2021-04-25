@@ -117,7 +117,7 @@ cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
   seg.setNormalDistanceWeight (0.1);
   seg.setMaxIterations (150);
   seg.setDistanceThreshold (0.01);
-  seg.setRadiusLimits (0.2, 0.4);
+  seg.setRadiusLimits (0.1, 0.2);
   seg.setInputCloud (cloud_filtered2);
   seg.setInputNormals (cloud_normals2);
 
@@ -181,12 +181,12 @@ cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
         float cy = centroid[1];
         float cz = centroid[2]; 
 
-        std::cout << point_camera.point;
-        if (point_camera.point.z >= 0.25) {
+        std::cout << point_map.point; 
+        // if (point_map.point.z >= 0.25) {
           // if detected shape is higher than 0.25 cm - we get rid of the floor detection
-        std::cout << "Detected cylinder";
-        publ.publish(point_camera);
-        }
+          std::cout << "Detected cylinder";
+          publ.publish(point_map);
+        //}
 
 	  	  /*marker.header.frame_id = "map";
           marker.header.stamp = ros::Time::now();
@@ -236,7 +236,7 @@ main (int argc, char** argv)
   // For transforming between coordinate frames
   tf2_ros::TransformListener tf2_listener(tf2_buffer);
 
-  publ = nh.advertise<geometry_msgs::PointStamped>("/cylinderDetection", 1);
+  publ = nh.advertise<geometry_msgs::PointStamped>("/cylinderDetection", 10);
   // Create a ROS subscriber for the input point cloud
   ros::Subscriber sub = nh.subscribe ("input", 1, cloud_cb);
 

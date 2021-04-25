@@ -28,7 +28,8 @@ class Markers:
 
     def drawMarkers(self, pose, exists, index):
         if pose is not None:
-            # Create a marker used for visualization
+            # Create a marker used for visualization 
+            print("Position: ", pose)
             self.marker_num += 1
             marker = Marker()
             marker.header.stamp = rospy.Time(0)

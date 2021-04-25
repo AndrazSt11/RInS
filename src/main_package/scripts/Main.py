@@ -290,7 +290,7 @@ class MainNode:
         exists = False
         index = 0 
 
-        # first detected face (publish)
+        # first detected cylinder (publish)
         if (len(self.cylinders) == 0):
             print("New cylinder instance detected")
             self.cylinders.append(detectedCylinder)
@@ -323,6 +323,7 @@ class MainNode:
                 alpha = 0.15
 
                 # if already exists update the coordinates
+
                 movAvgX = (self.cylinders[index].x * (1 - alpha)) + (detectedCylinder.x * alpha)
                 movAvgY = (self.cylinders[index].y * (1 - alpha)) + (detectedCylinder.y * alpha)
                 movAvgZ = (self.cylinders[index].z * (1 - alpha)) + (detectedCylinder.z * alpha)
@@ -333,7 +334,8 @@ class MainNode:
 
                 self.cylinder_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index)
 
-                # update normal
+                # update normal 
+
                 org_normal = np.array([self.cylinders[index].norm_x, self.cylinders[index].norm_y])
                 new_normal = np.array([detectedCylinder.norm_x, detectedCylinder.norm_y])
                 updated_normal = org_normal + alpha * (new_normal - org_normal)
@@ -413,7 +415,8 @@ class MainNode:
                 # moving average
                 alpha = 0.15
 
-                # if already exists update the coordinates
+                # if already exists update the coordinates 
+                
                 movAvgX = (self.faces[index].x * (1 - alpha)) + (detectedFace.x * alpha)
                 movAvgY = (self.faces[index].y * (1 - alpha)) + (detectedFace.y * alpha)
                 movAvgZ = (self.faces[index].z * (1 - alpha)) + (detectedFace.z * alpha)
