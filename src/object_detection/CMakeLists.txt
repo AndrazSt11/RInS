@@ -29,7 +29,9 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_message_files(DIRECTORY msg
   FILES
-  Cylinder.msg
+  Cylinder.msg 
+  RingDetected.msg 
+  DetectedR.msg
 )
 
 generate_messages(DEPENDENCIES std_msgs geometry_msgs)

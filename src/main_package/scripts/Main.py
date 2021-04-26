@@ -10,7 +10,8 @@ import tf2_geometry_msgs
 import tf2_ros
 
 from geometry_msgs.msg import PointStamped, Vector3, Pose, Point, Quaternion
-from face_detector.msg import FaceDetected, Detected, CylinderD
+from face_detector.msg import FaceDetected, Detected, CylinderD 
+from object_detection.msg import RingDetected, DetectedR
 from exercise6.msg import Cylinder 
 from move_manager.mover import Mover
 import numpy as np 
@@ -25,8 +26,22 @@ class State(Enum):
     GREET = 4 
     FINISH = 5 
     CYLINDER_DETECTED = 6 
+    RING_DETECTED = 7
 
 class Cylinder: 
+    def __init__(self, x, y, z, norm_x, norm_y): 
+        # coordinates of a detected cylinder
+        self.x = x 
+        self.y = y 
+        self.z = z 
+
+        # cylinder normals
+        self.norm_x = norm_x 
+        self.norm_y = norm_y 
+
+        self.num_of_detections = 1 
+
+class Ring: 
     def __init__(self, x, y, z, norm_x, norm_y): 
         # coordinates of a detected cylinder
         self.x = x 
@@ -68,6 +83,11 @@ class MainNode:
         self.new_cylinder_detection_index = -1
         self.cylinders = [] 
 
+        # All data that needs to be stored (cylinders)
+        self.ring_detection_treshold = 1
+        self.new_ring_detection_index = -1
+        self.rings = [] 
+
         self.mover = Mover()
 
         # All message passing nodes
@@ -76,7 +96,11 @@ class MainNode:
 
         # All message passing nodes (cylinder)
         self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', PointStamped, self.cylinderDetection)
-        self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10);
+        self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
+
+        # All message passing nodes (rings)
+        self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.ringDetection)
+        self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10);
 
 
     # Processes that need to be updated every iteration 
@@ -265,6 +289,89 @@ class MainNode:
 
     #----------------call-back-functions-------------------- 
 
+    def ringDetection(self, data): 
+
+        if (self.state == State.RING_DETECTED) or (self.state == State.FINISH):
+            return
+
+        # compute ring normal 
+        robotPose = self.mover.get_pose() 
+
+        robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
+        ringPoint_np = np.array([data.ring_x, data.ring_y]) 
+
+        ring_normal = robotPoint_np - ringPoint_np
+        ring_normal = ring_normal / np.linalg.norm(ring_normal) 
+
+        # create a cylinder 
+        detectedRing = Ring(data.ring_x, data.ring_y, data.ring_z, ring_normal[0], ring_normal[1]) 
+
+        # Process detection
+        exists = False
+        index = 0 
+
+        # first detected ring (publish)
+        if (len(self.rings) == 0):
+            print("New ring instance detected")
+            self.rings.append(detectedRing)
+
+            if(self.ring_detection_treshold == 1):
+                # self.state = State.CYLINDER_DETECTED 
+                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index) # dodaj publisher za valje 
+        
+        else:
+            count = 0
+
+            # Checks if ring already exists
+            for ring in self.rings:
+                distanceM = math.sqrt((ring.x - detectedRing.x)**2 + (ring.y - detectedRing.y)**2 + (ring.z - detectedRing.z)**2) 
+                
+                # Dot product to check if normals on the same side
+                normalComparison = ring.norm_x * detectedRing.norm_x + ring.norm_y * detectedRing.norm_y
+                # print("---------------------NORMAL_DOT_PRODUCT-----------")
+                # print(normalComparison)
+
+                # Face exists if correct distance away and its normal is aprox max 60 degrees different
+                if ((distanceM < 1) and (normalComparison > 0.1)):
+                    ring.num_of_detections += 1
+                    exists = True
+                    index = count
+                count+=1  
+
+            if (exists): 
+                # moving average
+                alpha = 0.15
+
+                # if already exists update the coordinates
+
+                movAvgX = (self.rings[index].x * (1 - alpha)) + (detectedRing.x * alpha)
+                movAvgY = (self.rings[index].y * (1 - alpha)) + (detectedRing.y * alpha)
+                movAvgZ = (self.rings[index].z * (1 - alpha)) + (detectedRing.z * alpha)
+
+                self.rings[index].x = movAvgX
+                self.rings[index].y = movAvgY
+                self.rings[index].z = movAvgZ 
+
+                self.ring_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index)
+
+                # update normal 
+
+                org_normal = np.array([self.rings[index].norm_x, self.rings[index].norm_y])
+                new_normal = np.array([detectedRing.norm_x, detectedRing.norm_y])
+                updated_normal = org_normal + alpha * (new_normal - org_normal)
+                updated_normal = updated_normal / np.linalg.norm(updated_normal)
+                
+                self.rings[index].norm_x = updated_normal[0]
+                self.rings[index].norm_y = updated_normal[1]
+
+            else:
+                print("New ringinstance detected") 
+                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index) # popravi
+
+                if(self.ring_detection_treshold == 1):
+                    # self.state = State.CYLINDER_DETECTED
+                    self.rings.append(detectedRing)
+
     # Checks if cylinder was detected before and creates a marker if not
     def cylinderDetection(self, data): 
 
@@ -296,7 +403,7 @@ class MainNode:
             self.cylinders.append(detectedCylinder)
 
             if(self.cylinder_detection_treshold == 1):
-                self.state = State.CYLINDER_DETECTED 
+                # self.state = State.CYLINDER_DETECTED 
                 self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, exists, index) # dodaj publisher za valje 
 
         else:
@@ -354,7 +461,7 @@ class MainNode:
                 self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, exists, index) # popravi
 
                 if(self.cylinder_detection_treshold == 1):
-                    self.state = State.CYLINDER_DETECTED
+                    # self.state = State.CYLINDER_DETECTED
                     self.cylinders.append(detectedCylinder)
 
 

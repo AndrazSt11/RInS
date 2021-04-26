@@ -11,6 +11,7 @@ from geometry_msgs.msg import PointStamped, Vector3, Pose
 from cv_bridge import CvBridge, CvBridgeError
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
+from object_detection.msg import RingDetected
 
 
 class The_Ring:
@@ -36,7 +37,10 @@ class The_Ring:
 
         # Object we use for transforming between coordinate frames
         self.tf_buf = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buf)
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buf) 
+
+        # publish coordinates of rings
+        self.detection_publisher = rospy.Publisher('ring_detection', RingDetected);
 
 
     def get_pose(self,e,dist):
@@ -53,20 +57,20 @@ class The_Ring:
         x,y = dist*np.cos(angle_to_target), dist*np.sin(angle_to_target)
 
         ### Define a stamped message for transformation - directly in "base_frame"
-        #point_s = PointStamped()
-        #point_s.point.x = x
-        #point_s.point.y = y
-        #point_s.point.z = 0.3
-        #point_s.header.frame_id = "base_link"
-        #point_s.header.stamp = rospy.Time(0)
+        point_s = PointStamped()
+        point_s.point.x = x
+        point_s.point.y = y
+        point_s.point.z = 0.3
+        point_s.header.frame_id = "base_link"
+        point_s.header.stamp = rospy.Time(0)
 
         # Define a stamped message for transformation - in the "camera rgb frame"
-        point_s = PointStamped()
-        point_s.point.x = -y
-        point_s.point.y = 0
-        point_s.point.z = x
-        point_s.header.frame_id = "camera_rgb_optical_frame"
-        point_s.header.stamp = rospy.Time(0)
+        # point_s = PointStamped()
+        # point_s.point.x = -y
+        # point_s.point.y = 0
+        # point_s.point.z = x
+        # point_s.header.frame_id = "camera_rgb_optical_frame"
+        #point_s.header.stamp = rospy.Time(0)
 
         # Get the point in the "map" coordinate system
         point_world = self.tf_buf.transform(point_s, "map")
@@ -77,8 +81,9 @@ class The_Ring:
         pose.position.y = point_world.point.y
         pose.position.z = point_world.point.z
 
+        self.detection_publisher.publish(point_world.point.x, point_world.point.y, point_world.point.z)
         # Create a marker used for visualization
-        self.marker_num += 1
+        """self.marker_num += 1
         marker = Marker()
         marker.header.stamp = point_world.header.stamp
         marker.header.frame_id = point_world.header.frame_id
@@ -92,7 +97,7 @@ class The_Ring:
         marker.color = ColorRGBA(0, 1, 0, 1)
         self.marker_array.markers.append(marker)
 
-        self.markers_pub.publish(self.marker_array)
+        self.markers_pub.publish(self.marker_array)""" 
 
 
     def image_callback(self,data):
@@ -171,12 +176,15 @@ class The_Ring:
 
             y1 = int(center[1] - size / 2)
             y2 = int(center[1] + size / 2)
+
             y_min = y1 if y1 > 0 else 0
-            y_max = y2 if y2 < cv_image.shape[1] else cv_image.shape[1]
+            y_max = y2 if y2 < cv_image.shape[1] else cv_image.shape[1] 
+
+            # self.draw_rings(x1, y1)
 
             depth_image = self.bridge.imgmsg_to_cv2(depth_img, "16UC1")
 
-            self.get_pose(e1, float(np.mean(depth_image[x_min:x_max,y_min:y_max]))/1000.0)
+            self.get_pose(e1, float(np.mean(depth_image[x_min:x_max,y_min:y_max])))
 
         if len(candidates)>0:
                 cv2.imshow("Image window",cv_image)
