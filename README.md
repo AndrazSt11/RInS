@@ -10,12 +10,14 @@ rosrun sound_play soundplay_node.py
 rosrun main_package Main.py
 ``` 
 
-## How to run Cylinder segmentation 
+## How to run Cylinder segmentation and Ring detection
 ```bash
 roslaunch object_detection rins_world.launch 
 roslaunch simulation amcl_simulation.launch 
 roslaunch turtlebot_rviz_launchers view_navigation.launch 
 roslaunch object_detection find_cylinder.launch 
 rosrun face_detector cylinder_markers 
+rosrun object_detection detect_rings 
+rosrun object_detection ring_markers
 rosrun main_package Main.py
 ```
