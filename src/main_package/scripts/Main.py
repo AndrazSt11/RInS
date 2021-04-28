@@ -12,7 +12,7 @@ import tf2_ros
 from geometry_msgs.msg import PointStamped, Vector3, Pose, Point, Quaternion
 from face_detector.msg import FaceDetected, Detected, CylinderD 
 from object_detection.msg import RingDetected, DetectedR
-from exercise6.msg import Cylinder 
+# from object_detection.msg import Cylinder 
 from move_manager.mover import Mover
 import numpy as np 
 
@@ -433,7 +433,7 @@ class MainNode:
 
                 movAvgX = (self.cylinders[index].x * (1 - alpha)) + (detectedCylinder.x * alpha)
                 movAvgY = (self.cylinders[index].y * (1 - alpha)) + (detectedCylinder.y * alpha)
-                movAvgZ = (self.cylinders[index].z * (1 - alpha)) + (detectedCylinder.z * alpha)
+                movAvgZ = (self.cylinders[inha = 0.15dex].z * (1 - alpha)) + (detectedCylinder.z * alpha)
 
                 self.cylinders[index].x = movAvgX
                 self.cylinders[index].y = movAvgY
