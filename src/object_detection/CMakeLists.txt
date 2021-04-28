@@ -25,6 +25,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_ros
   tf2_geometry_msgs
   message_generation
+  message_filters
 ) 
 
 add_message_files(DIRECTORY msg
@@ -67,6 +68,7 @@ catkin_package(
     roscpp
     sensor_msgs
     std_msgs
+    message_filters
   DEPENDS
     Boost
     Eigen
