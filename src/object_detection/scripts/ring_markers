@@ -67,6 +67,7 @@ class Markers:
             self.markers_pub.publish(self.marker_array)
 
 def callback(data, args):
+    print("Processing new ring")
     marker = args
 
     # create a pose with given coordinates

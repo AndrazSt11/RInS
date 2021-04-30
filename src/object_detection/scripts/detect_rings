@@ -57,7 +57,7 @@ class The_Ring:
 
 
     def publish_detection(self, e, dist, color, stamp):
-        k_f = 525 # kinect focal length in pixels // TODO: in face detection it is 554
+        k_f = 554 # kinect focal length in pixels // TODO: in face detection it is 554
 
         elipse_x = self.dims[1] / 2 - e[0][0]
         elipse_y = self.dims[0] / 2 - e[0][1]
@@ -110,8 +110,8 @@ class The_Ring:
 
         # Binarize the image
         ret, thresh = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY) # Changed treshlod to 150
-        # cv2.imshow("Image window",thresh)
-        # cv2.waitKey(1)
+        cv2.imshow("Image window",thresh)
+        cv2.waitKey(1)
 
         # Extract contours
         contours, hierarchy = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE) # TODO: test parameter
@@ -194,13 +194,12 @@ class The_Ring:
             
             if depth_diff > 0.1:
                 print("Candidate", candidateNumber, "is true ring.")
-                ring_distance = float(np.mean(depth_image[x_min:x_max,y_min:y_max]))
 
                 # Detect color
                 color = self.detectColor(rgb_image, ringPixels)
                 print("It's color is", self.getStringLabel(color))
 
-                self.publish_detection(e1, ring_distance, color, self.depth_message.header.stamp)
+                self.publish_detection(e1, avg_ringDepth, self.getStringLabel(color), self.depth_message.header.stamp)
             
             else:
                 print("Candidate", candidateNumber, "is fake ring.")

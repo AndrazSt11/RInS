@@ -42,11 +42,13 @@ class Cylinder:
         self.num_of_detections = 1 
 
 class Ring: 
-    def __init__(self, x, y, z, norm_x, norm_y): 
+    def __init__(self, x, y, z, color, norm_x, norm_y): 
         # coordinates of a detected cylinder
         self.x = x 
         self.y = y 
         self.z = z 
+
+        self.color = color
 
         # cylinder normals
         self.norm_x = norm_x 
@@ -109,7 +111,7 @@ class MainNode:
 
     # Act based on current state
     def execute(self):
-        rospy.loginfo(State(self.state))
+        # rospy.loginfo(State(self.state))
 
         if self.state == State.STATIONARY: 
             if (len(self.faces) == 5): 
@@ -290,14 +292,13 @@ class MainNode:
     #----------------call-back-functions-------------------- 
 
     def ringDetection(self, data): 
+        print("Ring detected")
 
         if (self.state == State.RING_DETECTED) or (self.state == State.FINISH):
             return
 
         # compute ring normal 
         robotPose = self.mover.get_pose() 
-
-        ringColor = data.color
 
         robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
         ringPoint_np = np.array([data.ring_x, data.ring_y]) 
@@ -306,7 +307,7 @@ class MainNode:
         ring_normal = ring_normal / np.linalg.norm(ring_normal) 
 
         # create a cylinder 
-        detectedRing = Ring(data.ring_x, data.ring_y, data.ring_z, ring_normal[0], ring_normal[1]) 
+        detectedRing = Ring(data.ring_x, data.ring_y, data.ring_z, data.color, ring_normal[0], ring_normal[1]) 
 
         # Process detection
         exists = False
@@ -319,7 +320,7 @@ class MainNode:
 
             if(self.ring_detection_treshold == 1):
                 # self.state = State.CYLINDER_DETECTED 
-                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index, ringColor) # dodaj publisher za valje 
+                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index)
         
         else:
             count = 0
@@ -345,7 +346,6 @@ class MainNode:
                 alpha = 0.15
 
                 # if already exists update the coordinates
-
                 movAvgX = (self.rings[index].x * (1 - alpha)) + (detectedRing.x * alpha)
                 movAvgY = (self.rings[index].y * (1 - alpha)) + (detectedRing.y * alpha)
                 movAvgZ = (self.rings[index].z * (1 - alpha)) + (detectedRing.z * alpha)
@@ -354,10 +354,9 @@ class MainNode:
                 self.rings[index].y = movAvgY
                 self.rings[index].z = movAvgZ 
 
-                self.ring_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index, ringColor)
+                self.ring_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, detectedRing.color, exists, index)
 
-                # update normal 
-
+                # Update normal 
                 org_normal = np.array([self.rings[index].norm_x, self.rings[index].norm_y])
                 new_normal = np.array([detectedRing.norm_x, detectedRing.norm_y])
                 updated_normal = org_normal + alpha * (new_normal - org_normal)
@@ -367,16 +366,18 @@ class MainNode:
                 self.rings[index].norm_y = updated_normal[1]
 
             else:
-                print("New ringinstance detected") 
-                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index, ringColor) # popravi
+                print("New ring instance detected") 
+                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index) # popravi
 
                 if(self.ring_detection_treshold == 1):
                     # self.state = State.CYLINDER_DETECTED
                     self.rings.append(detectedRing)
 
+
     # Checks if cylinder was detected before and creates a marker if not
     def cylinderDetection(self, data): 
 
+        print("Detected cylinder")
         print("Detectane točke: ", data.point)
 
         # Determine when to ignore this callback

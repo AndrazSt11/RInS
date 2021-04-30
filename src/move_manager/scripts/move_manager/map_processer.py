@@ -88,7 +88,7 @@ def get_map_points(map_location):
     map_transform.transform.rotation = Quaternion(0,0,0,1)
 
     points = [transform_map_to_world(image_data.shape, map_transform, sc[0], sc[1]) for sc in square_centers]
-    return sorted([(p.x, p.y) for p in points], key=lambda p:-atan2(p[0], p[1]))
+    return sorted([(p.x, p.y) for p in points], key=lambda p:atan2(p[0], p[1]))
 
 
 
