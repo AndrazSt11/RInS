@@ -92,6 +92,7 @@ class The_Ring:
                 print(e)
 
             try:
+                
                 depth_image = self.bridge.imgmsg_to_cv2(self.depth_message, "32FC1")
             except CvBridgeError as e:
                 print(e)
@@ -187,9 +188,9 @@ class The_Ring:
             # rgb_image = cv2.circle(rgb_image, (int(e2[0][0]), int(e2[0][1])), 2, (0, 0, 255), -1)
             
             # for ringPixel in ringPixels:
-            #     rgb_image = cv2.circle(rgb_image, (ringPixel[1], ringPixel[0]), 1, (255, 0, 0), -1)
+            #     rgb_image = cv2.circle(rgb_image, (ringPixel[1], ringPixel[0]), 1, (255, 0, 0), -1)  
 
-            # print("Depth diff:", depth_diff)
+            print("Depth diff:", depth_diff)
             
             if depth_diff > 0.1:
                 print("Candidate", candidateNumber, "is true ring.")

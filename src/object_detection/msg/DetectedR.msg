@@ -3,3 +3,4 @@ float32 ring_y
 float32 ring_z 
 bool exists
 int64 index
+string color

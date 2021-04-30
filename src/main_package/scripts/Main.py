@@ -297,6 +297,8 @@ class MainNode:
         # compute ring normal 
         robotPose = self.mover.get_pose() 
 
+        ringColor = data.color
+
         robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
         ringPoint_np = np.array([data.ring_x, data.ring_y]) 
 
@@ -317,7 +319,7 @@ class MainNode:
 
             if(self.ring_detection_treshold == 1):
                 # self.state = State.CYLINDER_DETECTED 
-                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index) # dodaj publisher za valje 
+                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index, ringColor) # dodaj publisher za valje 
         
         else:
             count = 0
@@ -352,7 +354,7 @@ class MainNode:
                 self.rings[index].y = movAvgY
                 self.rings[index].z = movAvgZ 
 
-                self.ring_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index)
+                self.ring_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index, ringColor)
 
                 # update normal 
 
@@ -366,7 +368,7 @@ class MainNode:
 
             else:
                 print("New ringinstance detected") 
-                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index) # popravi
+                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, exists, index, ringColor) # popravi
 
                 if(self.ring_detection_treshold == 1):
                     # self.state = State.CYLINDER_DETECTED

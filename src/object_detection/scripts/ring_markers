@@ -26,7 +26,7 @@ class Markers:
         # Publiser for the visualization markers
         self.markers_pub = rospy.Publisher('ring_markers', MarkerArray, queue_size=1000) 
 
-    def drawMarkers(self, pose, exists, index):
+    def drawMarkers(self, pose, exists, index, color):
         if pose is not None:
             # Create a marker used for visualization 
             print("Position: ", pose)
@@ -40,8 +40,20 @@ class Markers:
             marker.frame_locked = False
             marker.lifetime = rospy.Duration.from_sec(30)
             marker.id = self.marker_num 
-            marker.scale = Vector3(0.1, 0.1, 0.1)
-            marker.color = ColorRGBA(0, 230, 64, 1) 
+            marker.scale = Vector3(0.1, 0.1, 0.1) 
+
+            if (color == "Black"):
+                marker.color = ColorRGBA(0, 0, 0, 1) 
+            elif (color == "Blue"):
+                marker.color = ColorRGBA(0, 0, 255, 1) 
+            elif (color == "Green"): 
+                marker.color = ColorRGBA(0, 132, 0, 1) 
+            elif (color == "Red"): 
+                marker.color = ColorRGBA(164, 0, 0, 1) 
+            elif (color == "White"): 
+                marker.color = ColorRGBA(0, 0, 0, 0) 
+            elif (color == "Yellow"): 
+                marker.color = ColorRGBA(255, 255, 0, 1)
 
             if (len(self.marker_array.markers) == 0 or exists == False): 
                 # create a marker for new face
@@ -65,8 +77,9 @@ def callback(data, args):
     
     exists = data.exists
     index = data.index 
+    color = data.color
 
-    marker.drawMarkers(pose, exists, index)
+    marker.drawMarkers(pose, exists, index, color)
 
 def main(): 
     marker = Markers()
