@@ -26,7 +26,8 @@ class State(Enum):
     GREET = 4 
     FINISH = 5 
     CYLINDER_DETECTED = 6 
-    RING_DETECTED = 7
+    RING_DETECTED = 7 
+    GREET_RING = 8
 
 class Cylinder: 
     def __init__(self, x, y, z, norm_x, norm_y): 
@@ -55,6 +56,7 @@ class Ring:
         self.norm_y = norm_y 
 
         self.num_of_detections = 1 
+        self.greeted = False
 
 class Face:
     def __init__(self, x, y, z, norm_x, norm_y):
@@ -150,6 +152,37 @@ class MainNode:
             self.state = State.STATIONARY
             return 
 
+        elif self.state == State.RING_DETECTED:
+            # stop robot
+            self.mover.stop_robot() 
+
+            # get the pose of the robot 
+            robotPose = self.mover.get_pose() 
+
+            # pose of a detected ring 
+            ringPoint = self.rings[self.new_ring_detection_index] 
+
+            # pose and orientation of a robot
+            pointR = Point(robotPose.position.x, robotPose.position.y, robotPose.position.z)
+            orientationR = Quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w)
+
+            robotPoint = Pose(pointR, orientationR) 
+
+            # greet
+            greetPoint, greetOrientation = self.greetRing(robotPose, ringPoint)
+            self.mover.move_to(greetPoint, greetOrientation)
+            self.state = State.GREET_RING
+            return
+
+        elif self.state == State.GREET_RING: 
+            if(not self.mover.traveling):
+                print("Greetings ring")
+                rospy.sleep(1)
+                sleep(2)
+
+                self.state = State.STATIONARY
+
+            return 
     #####################################################################################################
     #### FACE DETECTION #################################################################################
 
@@ -288,6 +321,45 @@ class MainNode:
         return point, quaternion 
 
 
+    def greetRing(self, robotPose, facePose):
+        ringPose.greeted = True 
+
+        self.mover.is_following_path = False
+
+        # position
+        greetX = 0 
+        greetY = 0
+        greetZ = 0 
+
+        # distance between robot and detected ring
+        distance =  math.sqrt((ringPose.x - robotPose.position.x)**2 + (ringPose.y - robotPose.position.y)**2) 
+
+        # travel distance
+        if (distance > 0.2):
+            travelD = distance - 0.2 
+        else:
+            travelD = distance 
+
+        fi = math.atan2(ringPose.y - robotPose.position.y, ringPose.x - robotPose.position.x) 
+
+        # greet position
+        greetX = robotPose.position.x + travelD * math.cos(fi)
+        greetY = robotPose.position.y + travelD * math.sin(fi) 
+
+        point = Point(greetX, greetY, greetZ)
+
+        # current orientation of a robot
+        Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
+
+        # new yaw 
+        yaw_z = fi - Ryaw_z
+
+        # back to quaternions 
+        nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z) 
+
+        quaternion = Quaternion(nX, nY, nZ, nW)
+
+        return point, quaternion 
 
     #----------------call-back-functions-------------------- 
 
@@ -306,7 +378,7 @@ class MainNode:
         ring_normal = robotPoint_np - ringPoint_np
         ring_normal = ring_normal / np.linalg.norm(ring_normal) 
 
-        # create a cylinder 
+        # create a ring
         detectedRing = Ring(data.ring_x, data.ring_y, data.ring_z, data.color, ring_normal[0], ring_normal[1]) 
 
         # Process detection
@@ -319,7 +391,7 @@ class MainNode:
             self.rings.append(detectedRing)
 
             if(self.ring_detection_treshold == 1):
-                # self.state = State.CYLINDER_DETECTED 
+                self.state = State.RING_DETECTED 
                 self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index)
         
         else:
@@ -342,6 +414,8 @@ class MainNode:
                 count+=1  
 
             if (exists): 
+                print("Detected ring already exists")
+
                 # moving average
                 alpha = 0.15
 
@@ -363,14 +437,22 @@ class MainNode:
                 updated_normal = updated_normal / np.linalg.norm(updated_normal)
                 
                 self.rings[index].norm_x = updated_normal[0]
-                self.rings[index].norm_y = updated_normal[1]
+                self.rings[index].norm_y = updated_normal[1] 
+
+                if ((self.state != State.GREET_RING) and self.rings[index].num_of_detections >= self.ring_detection_treshold) and (not self.rings[index].greeted):
+                    print("Tershold cleared - ring detection signal to robot") 
+                    self.state = State.RING_DETECTED
+                    self.new_ring_detection_index = index
 
             else:
-                print("New ring instance detected") 
-                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index) # popravi
+                if (self.state == State.GREET_RING): 
+                    print("In greet state")
+                else:
+                    print("New ring instance detected") 
+                    self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index) # popravi
 
                 if(self.ring_detection_treshold == 1):
-                    # self.state = State.CYLINDER_DETECTED
+                    self.state = State.RING_DETECTED
                     self.rings.append(detectedRing)
 
 
