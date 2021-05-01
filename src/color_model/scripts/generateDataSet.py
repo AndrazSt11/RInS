@@ -51,7 +51,7 @@ def noisePreprocess(image, noiseType):
         image = np.clip(image, -1.0, 1.0)
         return util.img_as_ubyte(image)
 
-def imagePreprocessPipeline(sourceImage, num):
+def imagePreprocessPipeline(sourceImage, num, brightnessOffset, contrastOffset):
     patchSize = 100;
     noiseType = ["gauss", "speckle", "salt_and_pepper"]
     
@@ -59,8 +59,8 @@ def imagePreprocessPipeline(sourceImage, num):
     width, height, col = sourceImage.shape 
 
     for i in range(0, num):
-        brightness = random.uniform(-20, 20)
-        contrast = random.uniform(-30, 30)
+        brightness = random.uniform(-brightnessOffset, brightnessOffset)
+        contrast = random.uniform(-contrastOffset, contrastOffset)
 
         xPatch = math.trunc(random.uniform(0 + patchSize, width - patchSize))
         yPatch = math.trunc(random.uniform(0 + patchSize, height - patchSize))
@@ -90,11 +90,15 @@ def saveImages(processedImages, destinationPath, color, sourceImageName):
 def main():
     random.seed(1)
 
-    num = 100
+    num = [180, 125, 125, 125, 125, 280]
+    brightnessOffset = [30, 50, 30, 50, 30, 50]
+    contrastOffset = [30, 50, 30, 50, 30, 50]
+
     sourcePath = "../DataSetOriginal/"
     destinationPath = "../DataSet/"
     colors = ["Black", "Blue", "Green", "Red", "White", "Yellow"]
     
+    i = 0
     for color in colors:
         print("Generating" + color)
 
@@ -103,8 +107,9 @@ def main():
 
         for sourceImageName in sourceImageNames:
             sourceImage = io.imread(path + sourceImageName)  # uint8 
-            processedImages = imagePreprocessPipeline(sourceImage, num)
+            processedImages = imagePreprocessPipeline(sourceImage, num[i], brightnessOffset[i], contrastOffset[i])
             saveImages(processedImages, destinationPath, color, sourceImageName)
+        i += 1
                     
 
 if __name__ == '__main__':

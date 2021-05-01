@@ -51,16 +51,19 @@ boost::array<float, COMPONENTS * BIN_NUM> getHistogram(const pcl::PointCloud<Poi
   }
 
   // Fill histogram
+  float numOfPoints = 0;
   for(auto& point : pointCloud->points) {
-    histogram[point.r] += 1.0f;
-    histogram[BIN_NUM + point.g] += 1.0f;
-    histogram[2 * BIN_NUM + point.b] += 1.0f;
+    if(point.z > 0.25) { // TODO: test limit
+      histogram[point.r] += 1.0f;
+      histogram[BIN_NUM + point.g] += 1.0f;
+      histogram[2 * BIN_NUM + point.b] += 1.0f;
+      numOfPoints += 1;
+    }
   }
 
   // Normalize
-  float pointCloudSize = static_cast<float>(pointCloud->size());
   for(size_t i = 0; i < COMPONENTS * BIN_NUM; i++) {
-    histogram[i] /= pointCloudSize;
+    histogram[i] /= numOfPoints;
   }
 
   return histogram;

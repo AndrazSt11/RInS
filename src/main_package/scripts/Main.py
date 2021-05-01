@@ -129,7 +129,7 @@ class MainNode:
                 self.state = State.FINISH
                 return
 
-            self.mover.follow_path()
+            # self.mover.follow_path()
             self.state = State.EXPLORE
             return
 
@@ -453,11 +453,11 @@ class MainNode:
                     self.new_ring_detection_index = index
 
             else:
-                if (self.state == State.GREET_RING): 
-                    print("In greet state")
-                else:
-                    print("New ring instance detected") 
-                    self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index) # popravi
+                # if (self.state == State.GREET_RING): 
+                #     print("In greet state")
+                # else:
+                #     print("New ring instance detected") 
+                #     self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index) # popravi
 
                 if(self.ring_detection_treshold == 1):
                     self.state = State.RING_DETECTED
@@ -468,7 +468,7 @@ class MainNode:
     def cylinderDetection(self, data): 
 
         # Testing cylinder detection
-        print("Detected cylinder")
+        print("---------------Detected cylinder---------------")
         # print("X: ", data.cylinder_x)
         # print("Y: ", data.cylinder_y)
         # print("Z: ", data.cylinder_z)
@@ -477,6 +477,8 @@ class MainNode:
         # print("GHistogram", data.colorHistogram[256:511])
         # print("BHistogram", data.colorHistogram[512:768])
         print("Color:", self.getStringLabel(self.mlpClf.predict([data.colorHistogram])))
+        print("Colors: Black - Blue - Green - Red - White - Yellow")
+        print(self.mlpClf.predict_proba([data.colorHistogram]))
 
         # Determine when to ignore this callback
         if (self.state == State.CYLINDER_DETECTED) or (self.state == State.FINISH):
