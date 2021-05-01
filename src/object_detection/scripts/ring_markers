@@ -51,7 +51,7 @@ class Markers:
             elif (color == "Red"): 
                 marker.color = ColorRGBA(164, 0, 0, 1) 
             elif (color == "White"): 
-                marker.color = ColorRGBA(0, 0, 0, 0) 
+                marker.color = ColorRGBA(255, 255, 255, 1) 
             elif (color == "Yellow"): 
                 marker.color = ColorRGBA(255, 255, 0, 1)
 

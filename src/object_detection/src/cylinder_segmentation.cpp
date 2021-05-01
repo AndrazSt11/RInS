@@ -1,6 +1,7 @@
 #include <iostream>
 #include <ros/ros.h>
 #include <math.h>
+#include <boost/array.hpp>
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -17,7 +18,11 @@
 #include "tf2_ros/transform_listener.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "geometry_msgs/PointStamped.h" 
+#include "object_detection/CylinderDetected.h"
 // #include "exercise6/Cylinder.h"
+
+const int BIN_NUM = 256;
+const int COMPONENTS = 3;
 
 ros::Publisher pubx;
 ros::Publisher puby;
@@ -26,17 +31,47 @@ ros::Publisher publ;
 
 tf2_ros::Buffer tf2_buffer;
 
-typedef pcl::PointXYZ PointT; 
+typedef pcl::PointXYZRGB PointT; 
 
 //ros::NodeHandle nh; 
 // ros::Publisher publ = nh.advertise<exercise6::Cylinder>("cylinderDetection", 1000);
 
-
-void 
-cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
+boost::array<float, COMPONENTS * BIN_NUM> getHistogram(const pcl::PointCloud<PointT>::Ptr pointCloud)
 {
-  // All the objects needed
+  boost::array<float, COMPONENTS * BIN_NUM> histogram;
+  
+  // for(auto& point : pointCloud->points) {
+  //   std::cerr << "-------" << std::endl;
+  //   std::cerr << "R: " << std::to_string(point.r) << "G: " << std::to_string(point.g) << "B: " << std::to_string(point.b) << std::endl;
+  // }
 
+  // Init to 0
+  for(auto& val : histogram) { 
+    val = 0.0f;
+  }
+
+  // Fill histogram
+  for(auto& point : pointCloud->points) {
+    histogram[point.r] += 1.0f;
+    histogram[BIN_NUM + point.g] += 1.0f;
+    histogram[2 * BIN_NUM + point.b] += 1.0f;
+  }
+
+  // Normalize
+  float pointCloudSize = static_cast<float>(pointCloud->size());
+  for(size_t i = 0; i < COMPONENTS * BIN_NUM; i++) {
+    histogram[i] /= pointCloudSize;
+  }
+
+  return histogram;
+}
+
+
+void cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
+{
+  std::cerr << "Cylinder processing started" << std::endl;
+
+  // All the objects needed
   ros::Time time_rec, time_test;
   time_rec = ros::Time::now();
   
@@ -137,90 +172,102 @@ cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
   {
 	  std::cerr << "PointCloud representing the cylindrical component: " << cloud_cylinder->points.size () << " data points." << std::endl;
           
-          pcl::compute3DCentroid (*cloud_cylinder, centroid);
-          std::cerr << "centroid of the cylindrical component: " << centroid[0] << " " <<  centroid[1] << " " <<   centroid[2] << " " <<   centroid[3] << std::endl;
+    pcl::compute3DCentroid (*cloud_cylinder, centroid);
+    std::cerr << "centroid of the cylindrical component: " << centroid[0] << " " <<  centroid[1] << " " <<   centroid[2] << " " <<   centroid[3] << std::endl;
 
 	  //Create a point in the "camera_rgb_optical_frame"
-          geometry_msgs::PointStamped point_camera;
-          geometry_msgs::PointStamped point_map;
-	      visualization_msgs::Marker marker;
-          geometry_msgs::TransformStamped tss;
-          
-          point_camera.header.frame_id = "camera_rgb_optical_frame";
-          point_camera.header.stamp = ros::Time::now();
+    geometry_msgs::PointStamped point_camera;
+    geometry_msgs::PointStamped point_map;
+    visualization_msgs::Marker marker;
+    geometry_msgs::TransformStamped tss;
+    
+    point_camera.header.frame_id = "camera_rgb_optical_frame";
+    point_camera.header.stamp = ros::Time::now();
 
-	  	  point_map.header.frame_id = "map";
-          point_map.header.stamp = ros::Time::now();
+    point_map.header.frame_id = "map";
+    point_map.header.stamp = ros::Time::now();
 
-		  point_camera.point.x = centroid[0];
-		  point_camera.point.y = centroid[1];
-		  point_camera.point.z = centroid[2];
+    point_camera.point.x = centroid[0];
+    point_camera.point.y = centroid[1];
+    point_camera.point.z = centroid[2];
 
 	  try{
 		  time_test = ros::Time::now();
 
 		  std::cerr << time_rec << std::endl;
 		  std::cerr << time_test << std::endl;
-  	      tss = tf2_buffer.lookupTransform("map","camera_rgb_optical_frame", time_rec);
-          //tf2_buffer.transform(point_camera, point_map, "map", ros::Duration(2));
-	  }
-          catch (tf2::TransformException &ex)
-	  {
+      tss = tf2_buffer.lookupTransform("map","camera_rgb_optical_frame", time_rec);
+      //tf2_buffer.transform(point_camera, point_map, "map", ros::Duration(2));
+	  } catch (tf2::TransformException &ex) {
 	       ROS_WARN("Transform warning: %s\n", ex.what());
 	  }
 
-          //std::cerr << tss ;
+      tf2::doTransform(point_camera, point_map, tss);
 
-          tf2::doTransform(point_camera, point_map, tss);
+      std::cerr << "point_camera: " << point_camera.point.x << " " <<  point_camera.point.y << " " <<  point_camera.point.z << std::endl;
 
-	      std::cerr << "point_camera: " << point_camera.point.x << " " <<  point_camera.point.y << " " <<  point_camera.point.z << std::endl;
+      std::cerr << "point_map: " << point_map.point.x << " " <<  point_map.point.y << " " <<  point_map.point.z << std::endl; 
 
-	      std::cerr << "point_map: " << point_map.point.x << " " <<  point_map.point.y << " " <<  point_map.point.z << std::endl; 
+      float cx = centroid[0];
+      float cy = centroid[1];
+      float cz = centroid[2]; 
 
-        float cx = centroid[0];
-        float cy = centroid[1];
-        float cz = centroid[2]; 
+      std::cout << point_map.point; 
 
-        std::cout << point_map.point; 
-        // if (point_map.point.z >= 0.25) {
-          // if detected shape is higher than 0.25 cm - we get rid of the floor detection
-          std::cout << "Detected cylinder";
-          publ.publish(point_map);
-        //}
+      // Build histogram for color detection
+      boost::array<float, COMPONENTS * BIN_NUM> RGBHistogram = getHistogram(cloud_cylinder);
+      
+      object_detection::CylinderDetected msg = {};
+      msg.cylinder_x = point_map.point.x;
+      msg.cylinder_y = point_map.point.y;
+      msg.cylinder_z = point_map.point.z;
+      msg.colorHistogram = RGBHistogram;
 
-	  	  /*marker.header.frame_id = "map";
-          marker.header.stamp = ros::Time::now();
+      std::cout << "Detected cylinder";
+      publ.publish(msg);
+    
 
-          marker.ns = "cylinder";
-          marker.id = 0;
+      // TODO: test if effective solution to remove floor detection
+      // if (point_map.point.z >= 0.25) {
+        // if detected shape is higher than 0.25 cm - we get rid of the floor detection
+        // std::cout << "Detected cylinder";
+        // publ.publish(point_map, RGBHistogram_vec);
+      //}
 
-          marker.type = visualization_msgs::Marker::CYLINDER;
-          marker.action = visualization_msgs::Marker::ADD;
 
-          marker.pose.position.x = point_map.point.x;
-          marker.pose.position.y = point_map.point.y;
-          marker.pose.position.z = point_map.point.z;
-          marker.pose.orientation.x = 0.0;
-	        marker.pose.orientation.y = 0.0;
-          marker.pose.orientation.z = 0.0;
-          marker.pose.orientation.w = 1.0;
+      /*marker.header.frame_id = "map";
+        marker.header.stamp = ros::Time::now();
 
-          marker.scale.x = 0.1;
-	        marker.scale.y = 0.1;
-	        marker.scale.z = 0.1;
+        marker.ns = "cylinder";
+        marker.id = 0;
 
-          marker.color.r=0.0f;
-          marker.color.g=1.0f;
-          marker.color.b=0.0f;
-          marker.color.a=1.0f;
+        marker.type = visualization_msgs::Marker::CYLINDER;
+        marker.action = visualization_msgs::Marker::ADD;
 
-	      marker.lifetime = ros::Duration();
+        marker.pose.position.x = point_map.point.x;
+        marker.pose.position.y = point_map.point.y;
+        marker.pose.position.z = point_map.point.z;
+        marker.pose.orientation.x = 0.0;
+        marker.pose.orientation.y = 0.0;
+        marker.pose.orientation.z = 0.0;
+        marker.pose.orientation.w = 1.0;
 
-	      pubm.publish (marker);*/
+        marker.scale.x = 0.1;
+        marker.scale.y = 0.1;
+        marker.scale.z = 0.1;
 
-	      pcl::PCLPointCloud2 outcloud_cylinder;
-        pcl::toPCLPointCloud2 (*cloud_cylinder, outcloud_cylinder);
-        puby.publish (outcloud_cylinder);
+        marker.color.r=0.0f;
+        marker.color.g=1.0f;
+        marker.color.b=0.0f;
+        marker.color.a=1.0f;
+
+      marker.lifetime = ros::Duration();
+
+      pubm.publish (marker);*/
+
+      pcl::PCLPointCloud2 outcloud_cylinder;
+      pcl::toPCLPointCloud2(*cloud_cylinder, outcloud_cylinder);
+      puby.publish(outcloud_cylinder);
 
   }
   
@@ -236,7 +283,9 @@ main (int argc, char** argv)
   // For transforming between coordinate frames
   tf2_ros::TransformListener tf2_listener(tf2_buffer);
 
-  publ = nh.advertise<geometry_msgs::PointStamped>("/cylinderDetection", 10);
+  // publ = nh.advertise<geometry_msgs::PointStamped>("/cylinderDetection", 10);
+  publ = nh.advertise<object_detection::CylinderDetected>("/cylinderDetection", 10);
+
   // Create a ROS subscriber for the input point cloud
   ros::Subscriber sub = nh.subscribe ("input", 1, cloud_cb);
 
@@ -244,7 +293,7 @@ main (int argc, char** argv)
   pubx = nh.advertise<pcl::PCLPointCloud2> ("planes", 1);
   puby = nh.advertise<pcl::PCLPointCloud2> ("cylinder", 1);
 
-  pubm = nh.advertise<visualization_msgs::Marker>("detected_cylinder",1); 
+  // pubm = nh.advertise<visualization_msgs::Marker>("detected_cylinder",1); 
 
   // Spin
   ros::spin ();

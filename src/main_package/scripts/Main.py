@@ -11,13 +11,18 @@ import tf2_ros
 
 from geometry_msgs.msg import PointStamped, Vector3, Pose, Point, Quaternion
 from face_detector.msg import FaceDetected, Detected, CylinderD 
-from object_detection.msg import RingDetected, DetectedR
+from object_detection.msg import RingDetected, DetectedR, CylinderDetected
 # from object_detection.msg import Cylinder 
 from move_manager.mover import Mover
 import numpy as np 
 
 from sound_play.msg import SoundRequest
 from sound_play.libsoundplay import SoundClient
+
+from sklearn import neural_network
+import joblib
+import pathlib
+
 
 class State(Enum): 
     STATIONARY = 1
@@ -29,11 +34,13 @@ class State(Enum):
     RING_DETECTED = 7
 
 class Cylinder: 
-    def __init__(self, x, y, z, norm_x, norm_y): 
+    def __init__(self, x, y, z, color, norm_x, norm_y): 
         # coordinates of a detected cylinder
         self.x = x 
         self.y = y 
         self.z = z 
+
+        self.color = color
 
         # cylinder normals
         self.norm_x = norm_x 
@@ -91,13 +98,14 @@ class MainNode:
         self.rings = [] 
 
         self.mover = Mover()
+        self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl")
 
         # All message passing nodes
         #self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.faceDetection)
         #self.face_detection_marker_publisher = rospy.Publisher('detection', Detected, queue_size=10);  
 
         # All message passing nodes (cylinder)
-        self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', PointStamped, self.cylinderDetection)
+        self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.cylinderDetection)
         self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
 
         # All message passing nodes (rings)
@@ -377,8 +385,16 @@ class MainNode:
     # Checks if cylinder was detected before and creates a marker if not
     def cylinderDetection(self, data): 
 
+        # Testing cylinder detection
         print("Detected cylinder")
-        print("Detectane točke: ", data.point)
+        # print("X: ", data.cylinder_x)
+        # print("Y: ", data.cylinder_y)
+        # print("Z: ", data.cylinder_z)
+        # # print(sum(data.colorHistogram))
+        # print("RHistogram", data.colorHistogram[0:255])
+        # print("GHistogram", data.colorHistogram[256:511])
+        # print("BHistogram", data.colorHistogram[512:768])
+        print("Color:", self.getStringLabel(self.mlpClf.predict([data.colorHistogram])))
 
         # Determine when to ignore this callback
         if (self.state == State.CYLINDER_DETECTED) or (self.state == State.FINISH):
@@ -388,13 +404,14 @@ class MainNode:
         robotPose = self.mover.get_pose() 
 
         robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
-        cylinderPoint_np = np.array([data.point.x, data.point.y]) 
+        cylinderPoint_np = np.array([data.cylinder_x, data.cylinder_y]) 
 
         cylinder_normal = robotPoint_np - cylinderPoint_np
         cylinder_normal = cylinder_normal / np.linalg.norm(cylinder_normal) 
 
         # create a cylinder 
-        detectedCylinder = Cylinder(data.point.x, data.point.y, data.point.z, cylinder_normal[0], cylinder_normal[1]) 
+        color = self.getStringLabel(self.mlpClf.predict([data.colorHistogram]))
+        detectedCylinder = Cylinder(data.cylinder_x, data.cylinder_y, data.cylinder_z, color, cylinder_normal[0], cylinder_normal[1]) 
 
         # Process detection
         exists = False
@@ -407,7 +424,7 @@ class MainNode:
 
             if(self.cylinder_detection_treshold == 1):
                 # self.state = State.CYLINDER_DETECTED 
-                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, exists, index) # dodaj publisher za valje 
+                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # dodaj publisher za valje 
 
         else:
             count = 0
@@ -442,7 +459,7 @@ class MainNode:
                 self.cylinders[index].y = movAvgY
                 self.cylinders[index].z = movAvgZ 
 
-                self.cylinder_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index)
+                self.cylinder_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, detectedCylinder.color, exists, index)
 
                 # update normal 
 
@@ -461,7 +478,7 @@ class MainNode:
 
             else:
                 print("New cylinder instance detected") 
-                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, exists, index) # popravi
+                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # popravi
 
                 if(self.cylinder_detection_treshold == 1):
                     # self.state = State.CYLINDER_DETECTED
@@ -561,6 +578,22 @@ class MainNode:
                     if(self.face_detection_treshold == 1):
                         self.state = State.FACE_DETECTED
                         self.faces.append(detectedFace)
+
+
+
+    def getStringLabel(self, numLabel):
+        if numLabel == 0:
+            return "Black"
+        elif numLabel == 1:
+            return "Blue"
+        elif numLabel == 2:
+            return "Green"
+        elif numLabel == 3:
+            return "Red"
+        elif numLabel == 4:
+            return "White"
+        elif numLabel == 5:
+            return "Yellow"  
 
 # def quaternion_create_from_axis_angle(axis, angle):
 #         half_angle = angle * 0.5

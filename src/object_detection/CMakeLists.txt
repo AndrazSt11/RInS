@@ -31,6 +31,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(DIRECTORY msg
   FILES
   Cylinder.msg 
+  CylinderDetected.msg
   RingDetected.msg 
   DetectedR.msg
 )
