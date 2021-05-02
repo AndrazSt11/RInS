@@ -38,14 +38,12 @@ class State(Enum):
 
 class Cylinder: 
     def __init__(self, x, y, z, color, norm_x, norm_y): 
-        # coordinates of a detected cylinder
         self.x = x 
         self.y = y 
         self.z = z 
 
         self.color = color
 
-        # cylinder normals
         self.norm_x = norm_x 
         self.norm_y = norm_y 
 
@@ -54,14 +52,12 @@ class Cylinder:
 
 class Ring: 
     def __init__(self, x, y, z, color, norm_x, norm_y): 
-        # coordinates of a detected cylinder
         self.x = x 
         self.y = y 
         self.z = z 
 
         self.color = color
 
-        # cylinder normals
         self.norm_x = norm_x 
         self.norm_y = norm_y 
 
@@ -70,7 +66,6 @@ class Ring:
 
 class Face:
     def __init__(self, x, y, z, norm_x, norm_y):
-        # coordinates of a detected face
         self.x = x
         self.y = y
         self.z = z 
@@ -156,8 +151,6 @@ class MainNode:
 
             robotPoint = Pose(pointR, orientationR)
 
-            point, quat = self.on_face_detected(robotPose, facePoint)
-
             # greet
             greetPoint, greetOrientation = self.greetFace(robotPose, facePoint)
             self.mover.move_to(greetPoint, greetOrientation)
@@ -166,11 +159,11 @@ class MainNode:
             return
 
         elif self.state == State.CYLINDER_DETECTED:            
-            #self.mover.stop_robot()
+            self.mover.stop_robot()
             robotPose = self.mover.get_pose()
 
             # pose of a detected face
-            facePoint = self.cylinders[self.new_cylinder_detection_index]
+            cylinderPoint = self.cylinders[self.new_cylinder_detection_index]
 
             # pose and orientation of a robot
             pointR = Point(robotPose.position.x, robotPose.position.y, robotPose.position.z)
@@ -178,10 +171,8 @@ class MainNode:
 
             robotPoint = Pose(pointR, orientationR)
 
-            point, quat = self.on_face_detected(robotPose, facePoint)
-
             # greet
-            greetPoint, greetOrientation = self.greetFace(robotPose, facePoint)
+            greetPoint, greetOrientation = self.greetCylinder(robotPose, cylinderPoint)
             self.mover.move_to(greetPoint, greetOrientation)
 
             self.state = State.GREET_CYLINDER
@@ -356,6 +347,113 @@ class MainNode:
                         self.faces.append(detectedFace)
 
 
+    def cylinderDetection(self, data): 
+
+        # Testing cylinder detection
+        print("Cylinder detected")
+        print("Color:", self.getStringLabel(self.mlpClf.predict([data.colorHistogram])))
+        # print("Colors: Black - Blue - Green - Red - White - Yellow")
+        # print(self.mlpClf.predict_proba([data.colorHistogram]))
+
+        # Determine when to ignore this callback
+        if (self.state == State.CYLINDER_DETECTED) or (self.state == State.FINISH):
+            return
+
+        color = self.getStringLabel(self.mlpClf.predict([data.colorHistogram]))
+        if (color == "White") or (color == "Black"):
+            print("False positive")
+            return
+
+        # TODO: if not sure of the color move around cylinder
+        maxScore = max(self.mlpClf.predict_proba([data.colorHistogram]))
+        if maxScore < 0.95:
+            # TODO: move around the cylinder
+            return # temporary solution
+
+        # Compute cylinder normal 
+        robotPose = self.mover.get_pose() 
+
+        robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
+        cylinderPoint_np = np.array([data.cylinder_x, data.cylinder_y]) 
+
+        cylinder_normal = robotPoint_np - cylinderPoint_np
+        cylinder_normal = cylinder_normal / np.linalg.norm(cylinder_normal) 
+
+        # create a cylinder 
+        detectedCylinder = Cylinder(data.cylinder_x, data.cylinder_y, data.cylinder_z, color, cylinder_normal[0], cylinder_normal[1]) 
+
+        # Process detection
+        exists = False
+        index = 0 
+
+        # first detected cylinder (publish)
+        if (len(self.cylinders) == 0):
+            print("New cylinder instance detected")
+            self.cylinders.append(detectedCylinder)
+
+            if(self.cylinder_detection_treshold == 1):
+                self.state = State.CYLINDER_DETECTED 
+                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # dodaj publisher za valje 
+
+        else:
+            count = 0
+
+            # Checks if cylinder already exists
+            for cylinder in self.cylinders:
+                distanceM = math.sqrt((cylinder.x - detectedCylinder.x)**2 + (cylinder.y - detectedCylinder.y)**2 + (cylinder.z - detectedCylinder.z)**2) 
+                
+                # Dot product to check if normals on the same side
+                normalComparison = cylinder.norm_x * detectedCylinder.norm_x + cylinder.norm_y * detectedCylinder.norm_y
+                # print("---------------------NORMAL_DOT_PRODUCT-----------")
+                # print(normalComparison)
+
+                # Face exists if correct distance away and its normal is aprox max 60 degrees different
+                if ((distanceM < 1) and (normalComparison > 0.1)):
+                    cylinder.num_of_detections += 1
+                    exists = True
+                    index = count
+                count+=1  
+
+            if (exists): 
+                # moving average
+                alpha = 0.15
+
+                # if already exists update the coordinates
+
+                movAvgX = (self.cylinders[index].x * (1 - alpha)) + (detectedCylinder.x * alpha)
+                movAvgY = (self.cylinders[index].y * (1 - alpha)) + (detectedCylinder.y * alpha)
+                movAvgZ = (self.cylinders[index].z * (1 - alpha)) + (detectedCylinder.z * alpha)
+
+                self.cylinders[index].x = movAvgX
+                self.cylinders[index].y = movAvgY
+                self.cylinders[index].z = movAvgZ 
+
+                self.cylinder_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, detectedCylinder.color, exists, index)
+
+                # update normal 
+
+                org_normal = np.array([self.cylinders[index].norm_x, self.cylinders[index].norm_y])
+                new_normal = np.array([detectedCylinder.norm_x, detectedCylinder.norm_y])
+                updated_normal = org_normal + alpha * (new_normal - org_normal)
+                updated_normal = updated_normal / np.linalg.norm(updated_normal)
+                
+                self.cylinders[index].norm_x = updated_normal[0]
+                self.cylinders[index].norm_y = updated_normal[1]
+
+                if ((self.state != State.GREET_CYLINDER) and self.cylinders[index].num_of_detections >= self.cylinder_detection_treshold) and (not self.cylinders[index].greeted):
+                    print("Tershold cleared - cylinder detection signal to robot") 
+                    self.state = State.CYLINDER_DETECTED
+                    self.new_face_detection_index = index
+
+            else:
+                print("New cylinder instance detected") 
+                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # popravi
+
+                if(self.cylinder_detection_treshold == 1):
+                    self.state = State.CYLINDER_DETECTED
+                    self.cylinders.append(detectedCylinder)
+
+
     def ringDetection(self, data): 
         print("Ring detected")
 
@@ -449,103 +547,6 @@ class MainNode:
                         self.rings.append(detectedRing)
 
 
-    def cylinderDetection(self, data): 
-
-        # Testing cylinder detection
-        print("Cylinder detected")
-        # print("Color:", self.getStringLabel(self.mlpClf.predict([data.colorHistogram])))
-        # print("Colors: Black - Blue - Green - Red - White - Yellow")
-        # print(self.mlpClf.predict_proba([data.colorHistogram]))
-
-        # Determine when to ignore this callback
-        if (self.state == State.CYLINDER_DETECTED) or (self.state == State.FINISH):
-            return
-
-        # compute cylinder normal 
-        robotPose = self.mover.get_pose() 
-
-        robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
-        cylinderPoint_np = np.array([data.cylinder_x, data.cylinder_y]) 
-
-        cylinder_normal = robotPoint_np - cylinderPoint_np
-        cylinder_normal = cylinder_normal / np.linalg.norm(cylinder_normal) 
-
-        # create a cylinder 
-        color = self.getStringLabel(self.mlpClf.predict([data.colorHistogram]))
-        detectedCylinder = Cylinder(data.cylinder_x, data.cylinder_y, data.cylinder_z, color, cylinder_normal[0], cylinder_normal[1]) 
-
-        # Process detection
-        exists = False
-        index = 0 
-
-        # first detected cylinder (publish)
-        if (len(self.cylinders) == 0):
-            print("New cylinder instance detected")
-            self.cylinders.append(detectedCylinder)
-
-            if(self.cylinder_detection_treshold == 1):
-                self.state = State.CYLINDER_DETECTED 
-                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # dodaj publisher za valje 
-
-        else:
-            count = 0
-
-            # Checks if cylinder already exists
-            for cylinder in self.cylinders:
-                distanceM = math.sqrt((cylinder.x - detectedCylinder.x)**2 + (cylinder.y - detectedCylinder.y)**2 + (cylinder.z - detectedCylinder.z)**2) 
-                
-                # Dot product to check if normals on the same side
-                normalComparison = cylinder.norm_x * detectedCylinder.norm_x + cylinder.norm_y * detectedCylinder.norm_y
-                # print("---------------------NORMAL_DOT_PRODUCT-----------")
-                # print(normalComparison)
-
-                # Face exists if correct distance away and its normal is aprox max 60 degrees different
-                if ((distanceM < 1) and (normalComparison > 0.1)):
-                    cylinder.num_of_detections += 1
-                    exists = True
-                    index = count
-                count+=1  
-
-            if (exists): 
-                # moving average
-                alpha = 0.15
-
-                # if already exists update the coordinates
-
-                movAvgX = (self.cylinders[index].x * (1 - alpha)) + (detectedCylinder.x * alpha)
-                movAvgY = (self.cylinders[index].y * (1 - alpha)) + (detectedCylinder.y * alpha)
-                movAvgZ = (self.cylinders[index].z * (1 - alpha)) + (detectedCylinder.z * alpha)
-
-                self.cylinders[index].x = movAvgX
-                self.cylinders[index].y = movAvgY
-                self.cylinders[index].z = movAvgZ 
-
-                self.cylinder_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, detectedCylinder.color, exists, index)
-
-                # update normal 
-
-                org_normal = np.array([self.cylinders[index].norm_x, self.cylinders[index].norm_y])
-                new_normal = np.array([detectedCylinder.norm_x, detectedCylinder.norm_y])
-                updated_normal = org_normal + alpha * (new_normal - org_normal)
-                updated_normal = updated_normal / np.linalg.norm(updated_normal)
-                
-                self.cylinders[index].norm_x = updated_normal[0]
-                self.cylinders[index].norm_y = updated_normal[1]
-
-                if ((self.state != State.GREET_CYLINDER) and self.cylinders[index].num_of_detections >= self.cylinder_detection_treshold) and (not self.cylinders[index].greeted):
-                    print("Tershold cleared - face detection signal to robot") 
-                    self.state = State.CYLINDER_DETECTED
-                    self.new_face_detection_index = index
-
-            else:
-                print("New cylinder instance detected") 
-                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # popravi
-
-                if(self.cylinder_detection_treshold == 1):
-                    self.state = State.CYLINDER_DETECTED
-                    self.cylinders.append(detectedCylinder)
-
-
 
     #---------------------------------GREET-----------------------------------
 
@@ -592,6 +593,47 @@ class MainNode:
         return point, quaternion 
 
 
+    def greetCylinder(self, robotPose, cylinderPose):
+        cylinderPose.greeted = True 
+
+        self.mover.is_following_path = False
+
+        # position
+        greetX = 0 
+        greetY = 0
+        greetZ = 0 
+
+        # distance between robot and detected ring
+        distance =  math.sqrt((cylinderPose.x - robotPose.position.x)**2 + (cylinderPose.y - robotPose.position.y)**2) 
+
+        # travel distance
+        if (distance > 0.5):
+            travelD = distance - 0.5
+        else:
+            travelD = distance 
+
+        fi = math.atan2(cylinderPose.y - robotPose.position.y, cylinderPose.x - robotPose.position.x) 
+
+        # greet position
+        greetX = robotPose.position.x + travelD * math.cos(fi)
+        greetY = robotPose.position.y + travelD * math.sin(fi) 
+
+        point = Point(greetX, greetY, greetZ)
+
+        # current orientation of a robot
+        Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
+
+        # new yaw 
+        yaw_z = fi - Ryaw_z
+
+        # back to quaternions 
+        nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z) 
+
+        quaternion = Quaternion(nX, nY, nZ, nW)
+
+        return point, quaternion 
+
+
     def greetRing(self, robotPose, ringPose):
         ringPose.greeted = True 
 
@@ -606,8 +648,8 @@ class MainNode:
         distance =  math.sqrt((ringPose.x - robotPose.position.x)**2 + (ringPose.y - robotPose.position.y)**2) 
 
         # travel distance
-        if (distance > 0.2):
-            travelD = distance - 0.2 
+        if (distance > 0.5):
+            travelD = distance - 0.5
         else:
             travelD = distance 
 
