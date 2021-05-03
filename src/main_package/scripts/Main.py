@@ -12,6 +12,7 @@ import tf2_ros
 from geometry_msgs.msg import PointStamped, Vector3, Pose, Point, Quaternion
 from face_detector.msg import FaceDetected, Detected, CylinderD 
 from object_detection.msg import RingDetected, DetectedR, CylinderDetected
+from std_msgs.msg import String
 # from object_detection.msg import Cylinder 
 from move_manager.mover import Mover
 import numpy as np 
@@ -99,19 +100,22 @@ class MainNode:
         self.rings = [] 
 
         self.mover = Mover()
-        self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl")
+        self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl") 
+
+        # publisher for robot arm 
+        # self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=1)
 
         # All message passing nodes
-        self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.faceDetection)
-        self.face_detection_marker_publisher = rospy.Publisher('detection', Detected, queue_size=10);  
+        # self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.faceDetection)
+        # self.face_detection_marker_publisher = rospy.Publisher('detection', Detected, queue_size=10);  
 
         # All message passing nodes (cylinder)
         self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.cylinderDetection)
         self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
 
         # All message passing nodes (rings)
-        self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.ringDetection)
-        self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10);
+        # self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.ringDetection)
+        # self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10);
 
 
     # Processes that need to be updated every iteration 
@@ -129,7 +133,7 @@ class MainNode:
                 self.state = State.FINISH
                 return
 
-            # self.mover.follow_path()
+            self.mover.follow_path()
             self.state = State.EXPLORE
             return
 
@@ -235,7 +239,10 @@ class MainNode:
         
         elif self.state == State.GREET_CYLINDER: 
             if(not self.mover.traveling):
-                print("Greetings cylinder")
+                print("Greetings cylinder") 
+                self.robot_arm.publish("extend")
+                rospy.sleep(1) 
+                self.robot_arm.publish("retract")
                 rospy.sleep(1)
                 sleep(2)
 
@@ -330,13 +337,13 @@ class MainNode:
                 self.faces[index].norm_x = updated_normal[0]
                 self.faces[index].norm_y = updated_normal[1]
 
-                if ((self.state != State.GREET) and self.faces[index].num_of_detections >= self.face_detection_treshold) and (not self.faces[index].greeted):
+                if ((self.state != State.GREET_FACE) and self.faces[index].num_of_detections >= self.face_detection_treshold) and (not self.faces[index].greeted):
                     print("Tershold cleared - face detection signal to robot") 
                     self.state = State.FACE_DETECTED
                     self.new_face_detection_index = index
 
             else:
-                if (self.state == State.GREET_FACE): 
+                if (self.state == State.GREET_FACE or self.state == State.GREET_CYLINDER or self.state == State.GREET_RING): 
                     print("In greet state")
                 else:
                     print("New face instance detected") 
@@ -365,7 +372,7 @@ class MainNode:
             return
 
         # TODO: if not sure of the color move around cylinder
-        maxScore = max(self.mlpClf.predict_proba([data.colorHistogram]))
+        maxScore = max(self.mlpClf.predict_proba([data.colorHistogram])[0])
         if maxScore < 0.95:
             # TODO: move around the cylinder
             return # temporary solution
@@ -446,12 +453,15 @@ class MainNode:
                     self.new_face_detection_index = index
 
             else:
-                print("New cylinder instance detected") 
-                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # popravi
+                if (self.state == State.GREET_FACE or self.state == State.GREET_CYLINDER or self.state == State.GREET_RING): 
+                    print("In greet state")
+                else:
+                    print("New cylinder instance detected") 
+                    self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # popravi
 
-                if(self.cylinder_detection_treshold == 1):
-                    self.state = State.CYLINDER_DETECTED
-                    self.cylinders.append(detectedCylinder)
+                    if(self.cylinder_detection_treshold == 1):
+                        self.state = State.CYLINDER_DETECTED
+                        self.cylinders.append(detectedCylinder)
 
 
     def ringDetection(self, data): 
@@ -536,7 +546,7 @@ class MainNode:
                     self.new_ring_detection_index = index
 
             else:
-                if (self.state == State.GREET_RING): 
+                if (self.state == State.GREET_FACE or self.state == State.GREET_CYLINDER or self.state == State.GREET_RING): 
                     print("In greet state")
                 else:
                     print("New ring instance detected") 
