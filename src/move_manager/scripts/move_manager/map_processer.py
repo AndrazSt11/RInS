@@ -25,6 +25,16 @@ def check_for_new_square(data, size, x, y):
     
     return True
 
+def check_square_around_point(data, half_size, x, y):
+    # assume that point is not on the edge of the image
+    # check if all pixles are valid
+    for row in data[y-half_size:y+half_size]:
+        for value in row[x-half_size:x+half_size]:
+            if not is_valid(value):
+                return False
+    
+    return True
+
 
 def square_exists(squares, x, y):
     for i, s in enumerate(squares):
@@ -72,6 +82,58 @@ def transform_map_to_world(shape, transform, x,y):
     return transformed_pt.point
 
 
+def transform_map_to_world(shape, transform, x,y):
+    res = 0.05
+
+    x1 = x * res
+    y1 = (shape[1] - y) * res
+
+    pt = PointStamped()
+    pt.point.x = x1
+    pt.point.y = y1
+    pt.point.z = 0
+
+    transformed_pt = do_transform_point(pt, transform)
+    return transformed_pt.point
+
+def transform_world_to_map(x,y, shape):
+    res = 0.05
+
+    t = TransformStamped()
+    t.transform.translation.x = 12.2
+    t.transform.translation.y = 12.2
+    t.transform.translation.z = 0.0
+    t.transform.rotation = Quaternion(0,0,0,1)
+
+    pt = PointStamped()
+    pt.point.x = x
+    pt.point.y = y
+    pt.point.z = 0
+
+    transformed_pt = do_transform_point(pt, t)
+    x1 = transformed_pt.point.x / res
+    y1 = shape[1] - (transformed_pt.point.y / res)
+
+    #print("From: ", x, y)
+    #print("To: ", x1, y1)
+    return x1, y1
+
+
+def is_point_valid(x, y, image_data):
+    distance_from_edge = 7
+    x1, y1 = transform_world_to_map(x, y, image_data.shape)
+    if (image_data.shape[0] > x1 and image_data.shape[1] > y1):
+
+        if (check_square_around_point(image_data, distance_from_edge, int(x1), int(y1))):
+            # check square around point
+            return True
+        
+    else:
+        print("Point not valid")
+    
+    return False
+
+
 def get_map_points(map_location):
     image = Image.open(map_location)
     image_data = asarray(image)
@@ -88,7 +150,7 @@ def get_map_points(map_location):
     map_transform.transform.rotation = Quaternion(0,0,0,1)
 
     points = [transform_map_to_world(image_data.shape, map_transform, sc[0], sc[1]) for sc in square_centers]
-    return sorted([(p.x, p.y) for p in points], key=lambda p:atan2(p[0], p[1]))
+    return sorted([(p.x, p.y) for p in points], key=lambda p:atan2(p[0], p[1])), image_data
 
 
 

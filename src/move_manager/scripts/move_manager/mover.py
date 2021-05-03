@@ -7,7 +7,7 @@ from enum import Enum
 from geometry_msgs.msg import Point, Quaternion, Pose
 from std_msgs.msg import String
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
-from move_manager.map_processer import get_map_points
+from move_manager.map_processer import get_map_points, is_point_valid
 from os import getcwd
 
 # TODO get current state
@@ -62,7 +62,10 @@ class Mover():
 
         self.current_pose = Pose(Point(0,0,0), Quaternion(0,0,0,1))
         self.goal_position = Point(0,0,0)
-        self.path = Path(get_map_points(f'{getcwd()}/src/simulation/maps/map.pgm'))
+
+        points, image_data = get_map_points(f'{getcwd()}/src/simulation/maps/map.pgm')
+        self.path = Path(points)
+        self.image_data = image_data
         
         # get move base client
         self.move_base_client = self.get_base_client()
@@ -76,6 +79,10 @@ class Mover():
         rospy.loginfo("move_base action server found!")
         
         return client
+
+    def is_valid(self, point):
+        return is_point_valid(point.x, point.y, self.image_data)
+            
 
 
     # callback that fires when goal is reached
@@ -124,7 +131,7 @@ class Mover():
             return
 
         self.traveling = True
-        
+
         # lets move
         goal_msg = MoveBaseGoal()
         goal_msg.target_pose.header.frame_id = "map"
@@ -140,6 +147,7 @@ class Mover():
         self.goal_position = goal_msg.target_pose.pose.position
 
         rospy.loginfo(f"Moving to (x: {point.x}, y: {point.y})")
+
         self.move_base_client.send_goal(goal_msg, self.on_goal_reached, None, self.on_goal_feedback)
 
 
