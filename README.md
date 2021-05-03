@@ -18,6 +18,7 @@ roslaunch turtlebot_rviz_launchers view_navigation.launch
 roslaunch object_detection find_cylinder.launch 
 rosrun face_detector cylinder_markers 
 rosrun object_detection detect_rings 
-rosrun object_detection ring_markers
+rosrun object_detection ring_markers 
+rosrun robot_arm move_arm.py
 rosrun main_package Main.py
 ```
