@@ -148,6 +148,32 @@ class Mover():
 
         rospy.loginfo(f"Moving to (x: {point.x}, y: {point.y})")
 
+        self.move_base_client.send_goal(goal_msg, self.on_goal_reached, None, self.on_goal_feedback) 
+
+    def move_around(self, point, quat):
+        if self.traveling:
+            rospy.logwarn("robot is already trying to reach path. To cancel path call stop_robot() first.")
+            return
+
+        self.traveling = True
+
+        rospy.loginfo(f"Moving around the cylinder for better detection.")
+        # lets move
+        goal_msg = MoveBaseGoal()
+        goal_msg.target_pose.header.frame_id = "map"
+        goal_msg.target_pose.pose.position.x = point.x
+        goal_msg.target_pose.pose.position.y = point.y
+        goal_msg.target_pose.pose.position.z = 0.0
+        goal_msg.target_pose.pose.orientation.x = quat.x
+        goal_msg.target_pose.pose.orientation.y = quat.y
+        goal_msg.target_pose.pose.orientation.z = quat.z
+        goal_msg.target_pose.pose.orientation.w = quat.w
+        goal_msg.target_pose.header.stamp = rospy.get_rostime()
+
+        self.goal_position = goal_msg.target_pose.pose.position
+
+        rospy.loginfo(f"Moving to (x: {point.x}, y: {point.y})")
+
         self.move_base_client.send_goal(goal_msg, self.on_goal_reached, None, self.on_goal_feedback)
 
 

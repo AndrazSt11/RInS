@@ -238,11 +238,12 @@ class MainNode:
             return 
         
         elif self.state == State.GREET_CYLINDER: 
+            print("In greeting_cylinder state")
             if(not self.mover.traveling):
                 print("Greetings cylinder") 
-                self.robot_arm.publish("extend")
-                rospy.sleep(1) 
-                self.robot_arm.publish("retract")
+                # self.robot_arm.publish("extend")
+                # rospy.sleep(1) 
+                # self.robot_arm.publish("retract")
                 rospy.sleep(1)
                 sleep(2)
 
@@ -374,7 +375,87 @@ class MainNode:
         # TODO: if not sure of the color move around cylinder
         maxScore = max(self.mlpClf.predict_proba([data.colorHistogram])[0])
         if maxScore < 0.95:
-            # TODO: move around the cylinder
+            # TODO: move around the cylinder 
+
+            robotPosition = self.mover.get_pose()
+
+            # we create 4 points 
+            p1 = Point()
+            p2 = Point() 
+            p3 = Point()
+            p4 = Point()
+
+            # testing point 1
+            p1.x = robotPosition.position.x + 0.5
+            p1.y = robotPosition.position.y
+            p1.z = robotPosition.position.z 
+
+            # testing point 2 
+            p2.x = robotPosition.position.x - 0.5 
+            p2.y = robotPosition.position.y 
+            p2.z = robotPosition.position.z  
+
+            # testing point 3
+            p3.x = robotPosition.position.x 
+            p3.y = robotPosition.position.y + 0.5
+            p3.z = robotPosition.position.z 
+
+            # testing point 4 
+            p4.x = robotPosition.position.x 
+            p4.y = robotPosition.position.y - 0.5 
+            p4.z = robotPosition.position.z 
+
+            finalPoint = Point()
+
+            if (self.mover.is_valid(p1)): 
+                # move around to p1 
+                print("Moving to point p1")
+                fi = math.atan2(data.cylinder_y - p1.y, data.cylinder_x - p1.x) 
+                finalPoint = p1 
+
+            elif (self.mover.is_valid(p2)):
+                # move around to p2 
+                print("Moving to point p2")
+                fi = math.atan2(data.cylinder_y - p2.y, data.cylinder_x - p2.x) 
+                finalPoint = p2 
+
+            elif (self.mover.is_valid(p3)): 
+                # move around to p3 
+                print("Moving to point p3")
+                fi = math.atan2(data.cylinder_y - p3.y, data.cylinder_x - p3.x) 
+                finalPoint = p3 
+
+            elif (self.mover.is_valid(p4)): 
+                # move around to p4 
+                print("Moving to point p4")
+                fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x) 
+                finalPoint = p4 
+            else: 
+            	finalPoint = robotPosition.position 
+            	fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x)
+
+
+            # current orientation of a robot 
+            Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPosition.orientation.x, robotPosition.orientation.y, robotPosition.orientation.z, robotPosition.orientation.w)
+
+            # new yaw 
+            yaw_z = fi - Ryaw_z
+
+            # back to quaternions 
+            nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z)
+
+            quaternion = Quaternion(nX, nY, nZ, nW) 
+
+            # stop the robot 
+            self.mover.stop_robot()
+
+            # move the robot around the cylinder
+            self.mover.move_around(finalPoint, quaternion) 
+
+            # if (not self.mover.traveling):
+                # follow the path back 
+            self.mover.follow_path()
+            
             return # temporary solution
 
         # Compute cylinder normal 
