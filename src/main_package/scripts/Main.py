@@ -24,21 +24,24 @@ from sklearn import neural_network
 import joblib
 import pathlib
 
-
-
 class State(Enum): 
     STATIONARY = 1
     EXPLORE = 2
-    FACE_DETECTED = 3
-    CYLINDER_DETECTED = 4
-    RING_DETECTED = 5
-    GREET_FACE = 6
-    GREET_CYLINDER = 7  
-    GREET_RING = 8
-    FINISH = 9
+    APPROACH = 3
+    BUSY = 5
+    FINISH = 6
 
-class Cylinder: 
-    def __init__(self, x, y, z, color, norm_x, norm_y): 
+class TaskType(Enum):
+    FACE = 1
+    CYLINDER = 2
+    RING = 3
+
+
+class Task: 
+    def __init__(self, type, id, x, y, z, norm_x, norm_y, color=False):
+        self.id = id
+        self.type = type
+
         self.x = x 
         self.y = y 
         self.z = z 
@@ -49,34 +52,8 @@ class Cylinder:
         self.norm_y = norm_y 
 
         self.num_of_detections = 1 
-        self.greeted = False
-
-class Ring: 
-    def __init__(self, x, y, z, color, norm_x, norm_y): 
-        self.x = x 
-        self.y = y 
-        self.z = z 
-
-        self.color = color
-
-        self.norm_x = norm_x 
-        self.norm_y = norm_y 
-
-        self.num_of_detections = 1 
-        self.greeted = False
-
-class Face:
-    def __init__(self, x, y, z, norm_x, norm_y):
-        self.x = x
-        self.y = y
-        self.z = z 
-
-        self.norm_x = norm_x
-        self.norm_y = norm_y
-
-        self.num_of_detections = 1
-        self.greeted = False
-
+        self.finished = False
+        self.aborted = False
 
 
 class MainNode:
@@ -84,20 +61,30 @@ class MainNode:
         self.state = State.STATIONARY
         rospy.init_node('main_node', anonymous=True)
 
-        # All data that needs to be stored
-        self.face_detection_treshold = 1
-        self.new_face_detection_index = -1
-        self.faces = [] 
+        # Task queue (points to visit)
+        self.tasks = []
+        self.current_task = False
 
-        # All data that needs to be stored (cylinders)
-        self.cylinder_detection_treshold = 1
-        self.new_cylinder_detection_index = -1
-        self.cylinders = [] 
+        # How many times we detect an object before we queue task
+        self.min_detections = {
+            TaskType.RING: 2,
+            TaskType.CYLINDER: 2,
+            TaskType.FACE: 1,
+        }
 
-        # All data that needs to be stored (cylinders)
-        self.ring_detection_treshold = 1
-        self.new_ring_detection_index = -1
-        self.rings = [] 
+        # Data about previous tasks (current and pending are also included)
+        self.history = {
+            TaskType.RING: [],
+            TaskType.CYLINDER: [],
+            TaskType.FACE: [],
+        }
+
+        # marker publishers
+        self.marker_publishers = {
+            TaskType.RING: rospy.Publisher('detectionR', DetectedR, queue_size=10),
+            TaskType.CYLINDER: rospy.Publisher('detectionC', CylinderD, queue_size=10),
+            TaskType.FACE: rospy.Publisher('detection', Detected, queue_size=10),
+        }
 
         self.mover = Mover()
         self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl") 
@@ -106,689 +93,240 @@ class MainNode:
         # self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=1)
 
         # All message passing nodes
-        # self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.faceDetection)
-        # self.face_detection_marker_publisher = rospy.Publisher('detection', Detected, queue_size=10);  
-
-        # All message passing nodes (cylinder)
-        self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.cylinderDetection)
-        self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
-
-        # All message passing nodes (rings)
-        self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.ringDetection)
-        self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10)
+        # self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
+        self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.on_cylinder_detection)
+        self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection)
 
 
-    # Processes that need to be updated every iteration 
-    def update(self):
-        return
+    # this runs before every execute
+    def before_execute(self):
+        if self.current_task:
+            if not self.current_task.finished and not self.current_task.aborted:
+                return
+        
+        self.current_task = self.get_next_task()
+        if self.current_task:
+            rospy.loginfo(f"GETTING NEW TASK: type={self.current_task.type} color={self.current_task.color}")
 
 
     # Act based on current state
     def execute(self):
-        # print(State(self.state))
 
-        if self.state == State.STATIONARY: 
-            if (len(self.faces) == 5): 
-                self.mover.stop_robot() 
-                self.state = State.FINISH
-                return
+        if self.state == State.STATIONARY or self.state == State.EXPLORE:
+            if self.current_task:
+                self.state = State.APPROACH
+            else:
+                self.state = State.EXPLORE
 
+
+        if self.state == State.APPROACH:
+            self.mover.stop_robot()
+
+            success, point, quat = self.get_task_point(self.current_task)
+            if success:
+                self.state = State.BUSY
+                self.mover.move_to(point, quat, force_reach=True)
+            else:
+                self.abort_task(self.current_task)
+
+
+        if self.state == State.BUSY:
+            if not self.mover.traveling:
+                
+                if self.current_task:
+                    if self.current_task.type == TaskType.RING:
+                        self.on_ring_reached()
+
+                    elif self.current_task.type == TaskType.CYLINDER:
+                        self.on_cylinder_reached()
+
+                    elif self.current_task.type == TaskType.FACE:
+                        self.on_face_reached()
+                else:
+                    rospy.logwarn("No task in BUSY state?")
+
+                self.state = State.STATIONARY
+
+
+        if self.state == State.EXPLORE:
             self.mover.follow_path()
-            self.state = State.EXPLORE
-            return
-
-        elif self.state == State.EXPLORE:
-            # Check if robot had some error
-
-            return
-
-        elif self.state == State.FACE_DETECTED:            
-            self.mover.stop_robot()
-            robotPose = self.mover.get_pose()
-
-            # pose of a detected face
-            facePoint = self.faces[self.new_face_detection_index]
-
-            # pose and orientation of a robot
-            pointR = Point(robotPose.position.x, robotPose.position.y, robotPose.position.z)
-            orientationR = Quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w)
-
-            robotPoint = Pose(pointR, orientationR)
-
-            # greet
-            greetPoint, greetOrientation = self.greetFace(robotPose, facePoint)
-            self.mover.move_to(greetPoint, greetOrientation, force_reach=False)
-
-            self.state = State.GREET_FACE
-            return
-
-        elif self.state == State.CYLINDER_DETECTED:            
-            self.mover.stop_robot()
-            robotPose = self.mover.get_pose()
-
-            # pose of a detected face
-            cylinderPoint = self.cylinders[self.new_cylinder_detection_index]
-
-            # pose and orientation of a robot
-            pointR = Point(robotPose.position.x, robotPose.position.y, robotPose.position.z)
-            orientationR = Quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w)
-
-            robotPoint = Pose(pointR, orientationR)
-
-            # greet
-            greetPoint, greetOrientation = self.greetCylinder(robotPose, cylinderPoint)
-            self.mover.move_to(greetPoint, greetOrientation, force_reach=False)
-
-            self.state = State.GREET_CYLINDER
-            return 
-
-        elif self.state == State.RING_DETECTED:
-            # stop robot
-            self.mover.stop_robot() 
-
-            # get the pose of the robot 
-            robotPose = self.mover.get_pose() 
-
-            # pose of a detected ring 
-            ringPoint = self.rings[self.new_ring_detection_index] 
-
-            # pose and orientation of a robot
-            pointR = Point(robotPose.position.x, robotPose.position.y, robotPose.position.z)
-            orientationR = Quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w)
-
-            robotPoint = Pose(pointR, orientationR) 
-
-            # greet
-            greetPoint, greetOrientation = self.greetRing(robotPose, ringPoint)
-            self.mover.move_to(greetPoint, greetOrientation, force_reach=False)
-
-            self.state = State.GREET_RING
-            return
-
-        elif self.state == State.GREET_FACE: 
-            #soundhandle = SoundClient()
-            #rospy.sleep(1)
-
-            voice = 'voice_kal_diphone'
-            volume = 2.0
-            s = "Hello human, how are you today?"
-
-            #soundhandle.say(s, voice, volume)
-            #print("Greetings")
-
-            if(not self.mover.traveling):
-                # greet the face when the robot stops
-                #soundhandle.say(s, voice, volume)
-                print("Greetings")
-                rospy.sleep(1)
-                sleep(2)
-
-                self.state = State.STATIONARY
-
-            return 
-
-        elif self.state == State.GREET_RING: 
-            if(not self.mover.traveling):
-                print("Greetings ring")
-                rospy.sleep(1)
-                sleep(2)
-
-                self.state = State.STATIONARY
-
-            return 
         
-        elif self.state == State.GREET_CYLINDER: 
-            print("In greeting_cylinder state")
-            if(not self.mover.traveling):
-                print("Greetings cylinder") 
-                # self.robot_arm.publish("extend")
-                # rospy.sleep(1) 
-                # self.robot_arm.publish("retract")
-                rospy.sleep(1)
-                sleep(2)
 
-                self.state = State.STATIONARY
+        if self.state == State.FINISH: 
+            rospy.loginfo("Robot finished all tasks")
 
-            return 
+        #rospy.loginfo(f"MAIN STATE: {self.state}")
 
-        elif self.state == State.FINISH: 
-            print("Dettected all faces") 
-            sleep(10) 
+    #--------------------- TASK HANDLERS ------------------------
+    def get_task_point(self, task):
+        robot_pose = self.mover.get_pose()
+
+        # travel distance
+        travel_distance = math.sqrt((task.x - robot_pose.position.x)**2 + (task.y - robot_pose.position.y)**2)
+        #min_dist = 0.15 #0.15 if task.type == TaskType.RING else 0.5
+        #if travel_distance > min_dist:
+        #    travel_distance -= min_dist
+
+        fi = math.atan2(task.y - robot_pose.position.y, task.x - robot_pose.position.x)
+        initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi), robot_pose.position.y + travel_distance * math.sin(fi), 0.0)
+
+        point = self.get_valid_point_near(initial_point)
+        if not point:
+            rospy.logwarn(f"Couldn't find a valid point. Aborting task: id={task.id}")
+            return False, None, None
+
+        # current orientation of a robot
+        Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robot_pose.orientation.x, robot_pose.orientation.y, robot_pose.orientation.z, robot_pose.orientation.w) 
+
+        # new yaw 
+        yaw_z = fi - Ryaw_z
+
+        # back to quaternions 
+        nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z) 
+        quaternion = Quaternion(nX, nY, nZ, nW)
+
+        return True, point, quaternion
+
+
+    def get_next_task(self):
+        if len(self.tasks) > 0:
+            return self.tasks.pop(0)
+        
+        return False
+
+    def abort_task(self, task):
+        rospy.logwarn(f"Aborting task: id={task.id} type={task.type}")
+        task.aborted = True
+
+
+    def publish_task_marker(self, task, exists):
+        publisher = self.marker_publishers[task.type]
+        if publisher:
+            if task.type == TaskType.FACE:
+                publisher.publish(task.x, task.y, task.z, exists, task.id)
+            else:
+                publisher.publish(task.x, task.y, task.z, task.color, exists, task.id)
+
+    
+    def task_exists(self, task):
+        # Checks if face already exists
+        for old_task in self.history[task.type]:
             
-            return
+            # Check normal and distance
+            normal_compare = old_task.norm_x * task.norm_x + old_task.norm_y * task.norm_y
+            d = math.sqrt((old_task.x - task.x)**2 + (old_task.y - task.y)**2 + (old_task.z - task.z)**2) 
+
+            # Task exists if correct distance away and its normal is aprox max 60 degrees different and same color
+            if d < 1.1 and normal_compare > 0.06 and task.color == old_task.color:
+                return old_task
 
 
+    def update_task(self, old, new):
+        # update detecion num
+        old.num_of_detections += 1
 
-    #--------------------------CALLBACKS-----------------------------
+        # moving average
+        alpha = 0.15
 
-    def faceDetection(self, data): 
+        # update coordinates
+        movAvgX = (old.x * (1 - alpha)) + (new.x * alpha)
+        movAvgY = (old.y * (1 - alpha)) + (new.y * alpha)
+        movAvgZ = (old.z * (1 - alpha)) + (new.z * alpha)
 
-        # Determine when to ignore this callback
-        if (self.state == State.FACE_DETECTED) or (self.state == State.FINISH):
-            return
+        old.x = movAvgX
+        old.y = movAvgY
+        old.z = movAvgZ 
 
+        # update normal
+        old_normal = np.array([old.norm_x, old.norm_y])
+        new_normal = np.array([new.norm_x, new.norm_y])
+        updated_normal = old_normal + alpha * (new_normal - old_normal)
+        updated_normal = updated_normal / np.linalg.norm(updated_normal)
+        
+        old.norm_x = updated_normal[0]
+        old.norm_y = updated_normal[1]
+
+        # upadte marker
+        self.publish_task_marker(old, exists=True)
+
+
+    def add_task(self, type, x, y, z, color):
         # Computue face normal
-        robotPose = self.mover.get_pose()
+        robot_pose = self.mover.get_pose()
+        rp_np = np.array([robot_pose.position.x, robot_pose.position.y])
 
-        robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
-        facePoint_np = np.array([data.world_x, data.world_y])
-        face_normal = robotPoint_np - facePoint_np
-        face_normal = face_normal / np.linalg.norm(face_normal)
+        tp_np = np.array([x, y])
+        normal = rp_np - tp_np
+        normal = normal / np.linalg.norm(normal)
 
-        # Create face
-        detectedFace = Face(data.world_x, data.world_y, data.world_z, face_normal[0], face_normal[1]) 
+        new_task = Task(type, len(self.history[type]), x, y, z, normal[0], normal[1], color)
+        old_task = self.task_exists(new_task)
 
-        # Process detection
-        exists = False
-        index = 0
+        # Check if we should update the task or create a new one
+        if old_task:
+            self.update_task(old_task, new_task)
 
-        # first detected face (publish)
-        if (len(self.faces) == 0):
-            print("New face instance detected")
-            self.faces.append(detectedFace)
-
-            if(self.face_detection_treshold == 1):
-                self.state = State.FACE_DETECTED
-                self.face_detection_marker_publisher.publish(detectedFace.x, detectedFace.y, detectedFace.z, exists, index)
-
-        else:
-            count = 0
-
-            # Checks if face already exists
-            for face in self.faces:
-                distanceM = math.sqrt((face.x - detectedFace.x)**2 + (face.y - detectedFace.y)**2 + (face.z - detectedFace.z)**2) 
-                
-                # Dot product to check if normals on the same side
-                normalComparison = face.norm_x * detectedFace.norm_x + face.norm_y * detectedFace.norm_y
-                # print("---------------------NORMAL_DOT_PRODUCT-----------")
-                # print(normalComparison)
-
-                # Face exists if correct distance away and its normal is aprox max 60 degrees different
-                if ((distanceM < 1) and (normalComparison > 0.1)):
-                    face.num_of_detections += 1
-                    exists = True
-                    index = count
-                count+=1  
-
-
-            if (exists): 
-                print("Detected face already exists") 
-
-                # moving average
-                alpha = 0.15
-
-                # if already exists update the coordinates 
-                
-                movAvgX = (self.faces[index].x * (1 - alpha)) + (detectedFace.x * alpha)
-                movAvgY = (self.faces[index].y * (1 - alpha)) + (detectedFace.y * alpha)
-                movAvgZ = (self.faces[index].z * (1 - alpha)) + (detectedFace.z * alpha)
-
-                self.faces[index].x = movAvgX
-                self.faces[index].y = movAvgY
-                self.faces[index].z = movAvgZ 
-
-                self.face_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, exists, index)
-
-                # update normal
-                org_normal = np.array([self.faces[index].norm_x, self.faces[index].norm_y])
-                new_normal = np.array([detectedFace.norm_x, detectedFace.norm_y])
-                updated_normal = org_normal + alpha * (new_normal - org_normal)
-                updated_normal = updated_normal / np.linalg.norm(updated_normal)
-                
-                self.faces[index].norm_x = updated_normal[0]
-                self.faces[index].norm_y = updated_normal[1]
-
-                if ((self.state != State.GREET_FACE) and self.faces[index].num_of_detections >= self.face_detection_treshold) and (not self.faces[index].greeted):
-                    print("Tershold cleared - face detection signal to robot") 
-                    self.state = State.FACE_DETECTED
-                    self.new_face_detection_index = index
-
-            else:
-                if (self.state == State.GREET_FACE or self.state == State.GREET_CYLINDER or self.state == State.GREET_RING): 
-                    print("In greet state")
-                else:
-                    print("New face instance detected") 
-                    self.face_detection_marker_publisher.publish(detectedFace.x, detectedFace.y, detectedFace.z, exists, index)
-
-                    if(self.face_detection_treshold == 1):
-                        self.state = State.FACE_DETECTED
-                        self.faces.append(detectedFace)
-
-
-    def cylinderDetection(self, data): 
-
-        # Testing cylinder detection
-        print("Cylinder detected")
-        print("Color:", self.getStringLabel(self.mlpClf.predict([data.colorHistogram])))
-        # print("Colors: Black - Blue - Green - Red - White - Yellow")
-        # print(self.mlpClf.predict_proba([data.colorHistogram]))
-
-        # Determine when to ignore this callback
-        if (self.state == State.CYLINDER_DETECTED) or (self.state == State.FINISH):
-            return
-
-        color = self.getStringLabel(self.mlpClf.predict([data.colorHistogram]))
-        if (color == "White") or (color == "Black"):
-            print("False positive")
-            return
-
-        # TODO: if not sure of the color move around cylinder
-        # maxScore = max(self.mlpClf.predict_proba([data.colorHistogram])[0])
-        # if maxScore < 0.95:
-        #     print("Not sure about color - move around")
-        #     # TODO: move around the cylinder 
-
-        #     robotPosition = self.mover.get_pose()
-        #     print("Current robot position", robotPosition)
-
-        #     # we create 4 points 
-        #     p1 = Point()
-        #     p2 = Point() 
-        #     p3 = Point()
-        #     p4 = Point()
-
-        #     # testing point 1
-        #     p1.x = robotPosition.position.x + 0.5
-        #     p1.y = robotPosition.position.y
-        #     p1.z = robotPosition.position.z 
-
-        #     # testing point 2 
-        #     p2.x = robotPosition.position.x - 0.5 
-        #     p2.y = robotPosition.position.y 
-        #     p2.z = robotPosition.position.z  
-
-        #     # testing point 3
-        #     p3.x = robotPosition.position.x 
-        #     p3.y = robotPosition.position.y + 0.5
-        #     p3.z = robotPosition.position.z 
-
-        #     # testing point 4 
-        #     p4.x = robotPosition.position.x 
-        #     p4.y = robotPosition.position.y - 0.5 
-        #     p4.z = robotPosition.position.z 
-
-        #     finalPoint = Point()
-
-        #     if (self.mover.is_valid(p1)): 
-        #         # move around to p1 
-        #         print("Moving to point p1")
-        #         fi = math.atan2(data.cylinder_y - p1.y, data.cylinder_x - p1.x) 
-        #         finalPoint = p1 
-
-        #     elif (self.mover.is_valid(p2)):
-        #         # move around to p2 
-        #         print("Moving to point p2")
-        #         fi = math.atan2(data.cylinder_y - p2.y, data.cylinder_x - p2.x) 
-        #         finalPoint = p2 
-
-        #     elif (self.mover.is_valid(p3)): 
-        #         # move around to p3 
-        #         print("Moving to point p3")
-        #         fi = math.atan2(data.cylinder_y - p3.y, data.cylinder_x - p3.x) 
-        #         finalPoint = p3 
-
-        #     elif (self.mover.is_valid(p4)): 
-        #         # move around to p4 
-        #         print("Moving to point p4")
-        #         fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x) 
-        #         finalPoint = p4 
-        #     else: 
-        #     	finalPoint = robotPosition.position 
-        #     	fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x)
-
-        #     print("Destination", finalPoint)
-
-
-        #     # current orientation of a robot 
-        #     Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPosition.orientation.x, robotPosition.orientation.y, robotPosition.orientation.z, robotPosition.orientation.w)
-
-        #     # new yaw 
-        #     yaw_z = fi - Ryaw_z
-
-        #     # back to quaternions 
-        #     nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z)
-
-        #     quaternion = Quaternion(nX, nY, nZ, nW) 
-
-        #     # stop the robot 
-        #     self.mover.stop_robot()
-
-        #     # move the robot around the cylinder
-        #     self.mover.move_around(finalPoint, quaternion) 
-
-        #     # if (not self.mover.traveling):
-        #         # follow the path back 
-        #         # self.mover.follow_path()
+            # we don't want to repeat the same task
+            if old_task.finished:
+                return
             
-        #     return # temporary solution
-
-        # Compute cylinder normal 
-        robotPose = self.mover.get_pose() 
-
-        robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
-        cylinderPoint_np = np.array([data.cylinder_x, data.cylinder_y]) 
-
-        cylinder_normal = robotPoint_np - cylinderPoint_np
-        cylinder_normal = cylinder_normal / np.linalg.norm(cylinder_normal) 
-
-        # create a cylinder 
-        detectedCylinder = Cylinder(data.cylinder_x, data.cylinder_y, data.cylinder_z, color, cylinder_normal[0], cylinder_normal[1]) 
-
-        # Process detection
-        exists = False
-        index = 0 
-
-        # first detected cylinder (publish)
-        if (len(self.cylinders) == 0):
-            print("New cylinder instance detected")
-            self.cylinders.append(detectedCylinder)
-
-            if(self.cylinder_detection_treshold == 1):
-                self.state = State.CYLINDER_DETECTED 
-                self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # dodaj publisher za valje 
+            new_task = old_task
 
         else:
-            count = 0
+            # add to history
+            self.history[type].append(new_task)
 
-            # Checks if cylinder already exists
-            for cylinder in self.cylinders:
-                distanceM = math.sqrt((cylinder.x - detectedCylinder.x)**2 + (cylinder.y - detectedCylinder.y)**2 + (cylinder.z - detectedCylinder.z)**2) 
-                
-                # Dot product to check if normals on the same side
-                normalComparison = cylinder.norm_x * detectedCylinder.norm_x + cylinder.norm_y * detectedCylinder.norm_y
-                # print("---------------------NORMAL_DOT_PRODUCT-----------")
-                # print(normalComparison)
-
-                # Face exists if correct distance away and its normal is aprox max 60 degrees different
-                if ((distanceM < 1) and (normalComparison > 0.1)):
-                    cylinder.num_of_detections += 1
-                    exists = True
-                    index = count
-                count+=1  
-
-            if (exists): 
-                # moving average
-                alpha = 0.15
-
-                # if already exists update the coordinates
-
-                movAvgX = (self.cylinders[index].x * (1 - alpha)) + (detectedCylinder.x * alpha)
-                movAvgY = (self.cylinders[index].y * (1 - alpha)) + (detectedCylinder.y * alpha)
-                movAvgZ = (self.cylinders[index].z * (1 - alpha)) + (detectedCylinder.z * alpha)
-
-                self.cylinders[index].x = movAvgX
-                self.cylinders[index].y = movAvgY
-                self.cylinders[index].z = movAvgZ 
-
-                self.cylinder_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, detectedCylinder.color, exists, index)
-
-                # update normal 
-
-                org_normal = np.array([self.cylinders[index].norm_x, self.cylinders[index].norm_y])
-                new_normal = np.array([detectedCylinder.norm_x, detectedCylinder.norm_y])
-                updated_normal = org_normal + alpha * (new_normal - org_normal)
-                updated_normal = updated_normal / np.linalg.norm(updated_normal)
-                
-                self.cylinders[index].norm_x = updated_normal[0]
-                self.cylinders[index].norm_y = updated_normal[1]
-
-                if ((self.state != State.GREET_CYLINDER) and self.cylinders[index].num_of_detections >= self.cylinder_detection_treshold) and (not self.cylinders[index].greeted):
-                    print("Tershold cleared - cylinder detection signal to robot") 
-                    self.state = State.CYLINDER_DETECTED
-                    self.new_face_detection_index = index
-
-            else:
-                if (self.state == State.GREET_FACE or self.state == State.GREET_CYLINDER or self.state == State.GREET_RING): 
-                    print("In greet state")
-                else:
-                    print("New cylinder instance detected") 
-                    self.cylinder_detection_marker_publisher.publish(detectedCylinder.x, detectedCylinder.y, detectedCylinder.z, detectedCylinder.color, exists, index) # popravi
-
-                    if(self.cylinder_detection_treshold == 1):
-                        self.state = State.CYLINDER_DETECTED
-                        self.cylinders.append(detectedCylinder)
+            # upadte marker
+            self.publish_task_marker(new_task, exists=False)
 
 
-    def ringDetection(self, data): 
-        print("Ring detected")
-        print("Color", data.color)
+        # lets check if we need to queue it
+        if (new_task.num_of_detections >= self.min_detections[type]) and (not new_task in self.tasks):
+            self.tasks.append(new_task)
 
-        if (self.state == State.RING_DETECTED) or (self.state == State.FINISH):
+
+    #-------------------------- CALLBACKS -----------------------------
+    # FACES
+    def on_face_detection(self, data):
+        self.add_task(TaskType.FACE, data.world_x, data.world_y, data.world_z, False)
+
+    def on_face_reached(self):
+        voice = 'voice_kal_diphone'
+        volume = 2.0
+        s = "Hello human, how are you today?"
+
+        #soundhandle.say(s, voice, volume)
+        rospy.loginfo(f"Greeting face - {self.current_task.id}")
+        self.current_task.finished = True
+        rospy.sleep(3)
+
+
+    # CYLINDERS
+    def on_cylinder_detection(self, data): 
+        color = self.get_color_label(self.mlpClf.predict([data.colorHistogram]))
+        if (color == "White") or (color == "Black"):
+            rospy.logwarn(f"Cylinder detection: false-positive color={color}")
             return
 
-        # compute ring normal 
-        robotPose = self.mover.get_pose() 
-
-        robotPoint_np = np.array([robotPose.position.x, robotPose.position.y])
-        ringPoint_np = np.array([data.ring_x, data.ring_y]) 
-
-        ring_normal = robotPoint_np - ringPoint_np
-        ring_normal = ring_normal / np.linalg.norm(ring_normal) 
-
-        # create a ring
-        detectedRing = Ring(data.ring_x, data.ring_y, data.ring_z, data.color, ring_normal[0], ring_normal[1]) 
-
-        # Process detection
-        exists = False
-        index = 0 
-
-        # first detected ring (publish)
-        if (len(self.rings) == 0):
-            print("New ring instance detected")
-            self.rings.append(detectedRing)
-
-            if(self.ring_detection_treshold == 1):
-                self.state = State.RING_DETECTED 
-                self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index)
-        
-        else:
-            count = 0
-
-            # Checks if ring already exists
-            for ring in self.rings:
-                distanceM = math.sqrt((ring.x - detectedRing.x)**2 + (ring.y - detectedRing.y)**2 + (ring.z - detectedRing.z)**2) 
-                
-                # Dot product to check if normals on the same side
-                normalComparison = ring.norm_x * detectedRing.norm_x + ring.norm_y * detectedRing.norm_y
-                # print("---------------------NORMAL_DOT_PRODUCT-----------")
-                # print(normalComparison)
-
-                # Face exists if correct distance away and its normal is aprox max 60 degrees different
-                if ((distanceM < 1) and (normalComparison > 0.1) and (ring.color == detectedRing.color)):
-                    ring.num_of_detections += 1
-                    exists = True
-                    index = count
-                count+=1  
-
-            if (exists): 
-                print("Detected ring already exists")
-
-                # moving average
-                alpha = 0.15
-
-                # if already exists update the coordinates
-                movAvgX = (self.rings[index].x * (1 - alpha)) + (detectedRing.x * alpha)
-                movAvgY = (self.rings[index].y * (1 - alpha)) + (detectedRing.y * alpha)
-                movAvgZ = (self.rings[index].z * (1 - alpha)) + (detectedRing.z * alpha)
-
-                self.rings[index].x = movAvgX
-                self.rings[index].y = movAvgY
-                self.rings[index].z = movAvgZ 
-
-                self.ring_detection_marker_publisher.publish(movAvgX, movAvgY, movAvgZ, detectedRing.color, exists, index)
-
-                # Update normal 
-                org_normal = np.array([self.rings[index].norm_x, self.rings[index].norm_y])
-                new_normal = np.array([detectedRing.norm_x, detectedRing.norm_y])
-                updated_normal = org_normal + alpha * (new_normal - org_normal)
-                updated_normal = updated_normal / np.linalg.norm(updated_normal)
-                
-                self.rings[index].norm_x = updated_normal[0]
-                self.rings[index].norm_y = updated_normal[1] 
-
-                if ((self.state != State.GREET_RING) and self.rings[index].num_of_detections >= self.ring_detection_treshold) and (not self.rings[index].greeted):
-                    print("Tershold cleared - ring detection signal to robot") 
-                    self.state = State.RING_DETECTED
-                    self.new_ring_detection_index = index
-
-            else:
-                if (self.state == State.GREET_FACE or self.state == State.GREET_CYLINDER or self.state == State.GREET_RING): 
-                    print("In greet state")
-                else:
-                    print("New ring instance detected") 
-                    self.ring_detection_marker_publisher.publish(detectedRing.x, detectedRing.y, detectedRing.z, detectedRing.color, exists, index) # popravi
-
-                    if(self.ring_detection_treshold == 1):
-                        self.state = State.RING_DETECTED
-                        self.rings.append(detectedRing)
-
-
-
-    #---------------------------------GREET-----------------------------------
-
-    def greetFace(self, robotPose, facePose):
-        #self.state = State.GREET
-        facePose.greeted = True
-
-        # self.mover.move_to(face.x,  face.y)
-        self.mover.is_following_path = False
-
-        # position
-        greetX = 0 
-        greetY = 0
-        greetZ = 0 
-
-        # distance between robot and detected face
-        distance =  math.sqrt((facePose.x - robotPose.position.x)**2 + (facePose.y - robotPose.position.y)**2) 
-
-        # travel distance
-        if (distance > 0.5):
-            travelD = distance - 0.5 
-        else:
-            travelD = distance
-
-        fi = math.atan2(facePose.y - robotPose.position.y, facePose.x - robotPose.position.x)
-
-        # greet position
-        greetX = robotPose.position.x + travelD * math.cos(fi)
-        greetY = robotPose.position.y + travelD * math.sin(fi) 
-
-        initial_point = Point(greetX, greetY, greetZ)
-
-        point = self.get_valid_point_near(initial_point)
-        if not point:
-            rospy.logwarn("Point is invalid, not going to ring.")
-            point = robotPose.position
-
-        # current orientation of a robot
-        Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
-
-        # new yaw 
-        yaw_z = fi - Ryaw_z
-
-        # back to quaternions 
-        nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z) 
-
-        quaternion = Quaternion(nX, nY, nZ, nW)
-
-        return point, quaternion 
-
-
-    def greetCylinder(self, robotPose, cylinderPose):
-        cylinderPose.greeted = True 
-
-        self.mover.is_following_path = False
-
-        # position
-        greetX = 0 
-        greetY = 0
-        greetZ = 0 
-
-        # distance between robot and detected ring
-        distance =  math.sqrt((cylinderPose.x - robotPose.position.x)**2 + (cylinderPose.y - robotPose.position.y)**2) 
-
-        # travel distance
-        if (distance > 0.5):
-            travelD = distance - 0.5
-        else:
-            travelD = distance 
-
-        fi = math.atan2(cylinderPose.y - robotPose.position.y, cylinderPose.x - robotPose.position.x) 
-
-        # greet position
-        greetX = robotPose.position.x + travelD * math.cos(fi)
-        greetY = robotPose.position.y + travelD * math.sin(fi) 
-
-        initial_point = Point(greetX, greetY, greetZ)
-
-        point = self.get_valid_point_near(initial_point)
-        if not point:
-            rospy.logwarn("Point is invalid, not going to ring.")
-            point = robotPose.position
-
-        # current orientation of a robot
-        Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
-
-        # new yaw 
-        yaw_z = fi - Ryaw_z
-
-        # back to quaternions 
-        nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z) 
-
-        quaternion = Quaternion(nX, nY, nZ, nW)
-
-        return point, quaternion 
-
-
-    def greetRing(self, robotPose, ringPose):
-        ringPose.greeted = True 
-
-        self.mover.is_following_path = False
-
-        # position
-        greetX = 0 
-        greetY = 0
-        greetZ = 0 
-
-        # distance between robot and detected ring
-        distance =  math.sqrt((ringPose.x - robotPose.position.x)**2 + (ringPose.y - robotPose.position.y)**2) 
-
-        # travel distance
-        if (distance > 0.15):
-            travelD = distance - 0.15
-        else:
-            travelD = distance 
-
-        fi = math.atan2(ringPose.y - robotPose.position.y, ringPose.x - robotPose.position.x) 
-
-        # greet position
-        greetX = robotPose.position.x + travelD * math.cos(fi)
-        greetY = robotPose.position.y + travelD * math.sin(fi) 
-
-        initial_point = Point(greetX, greetY, greetZ)
-
-        point = self.get_valid_point_near(initial_point)
-        if not point:
-            rospy.logwarn("Point is invalid, not going to ring.")
-            point = robotPose.position
-
-        # current orientation of a robot
-        Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
-
-        # new yaw 
-        yaw_z = fi - Ryaw_z
-
-        # back to quaternions 
-        nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z) 
-
-        quaternion = Quaternion(nX, nY, nZ, nW)
-
-        return point, quaternion 
-
-
-
-    #----------------------------------HELPERS---------------------------------
-
+        self.add_task(TaskType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, color)
+    
+    def on_cylinder_reached(self):
+        rospy.loginfo(f"Greeting cylinder - {self.current_task.id}")
+        self.current_task.finished = True
+        rospy.sleep(3)
+
+
+    # RINGS
+    def on_ring_detection(self, data):
+        self.add_task(TaskType.RING, data.ring_x, data.ring_y, data.ring_z, data.color)
+
+    def on_ring_reached(self):
+        rospy.loginfo(f"Greeting ring - {self.current_task.id}")
+        self.current_task.finished = True
+        rospy.sleep(3)
+    
+
+    #---------------------------- HELPERS ---------------------------
     def euler_from_quaternion(self, x, y, z, w): 
         t0 = +2.0 * (w * x + y * z)
         t1 = +1.0 - 2.0 * (x * x + y * y)
@@ -805,6 +343,7 @@ class MainNode:
 
         return roll_x, pitch_y, yaw_z 
 
+
     def euler_to_quaternion(self, roll, pitch, yaw):
 
         qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
@@ -814,23 +353,25 @@ class MainNode:
 
         return qx, qy, qz, qw
 
-    def getStringLabel(self, numLabel):
-        if numLabel == 0:
+
+    def get_color_label(self, num):
+        if num == 0:
             return "Black"
-        elif numLabel == 1:
+        elif num == 1:
             return "Blue"
-        elif numLabel == 2:
+        elif num == 2:
             return "Green"
-        elif numLabel == 3:
+        elif num == 3:
             return "Red"
-        elif numLabel == 4:
+        elif num == 4:
             return "White"
-        elif numLabel == 5:
+        elif num == 5:
             return "Yellow"
+
 
     def get_valid_point_near(self, point):
         # Try with different offsets
-        for offset in [0.15, 0.2, 0.25, 0.35, 0.4, 0.5]:
+        for offset in [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]:
             for x in [0, -offset, offset]:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
@@ -845,7 +386,7 @@ def main():
 
     rate = rospy.Rate(2)
     while not rospy.is_shutdown():
-        mainNode.update()
+        mainNode.before_execute()
         mainNode.execute()
         rate.sleep()
 

@@ -33,7 +33,7 @@ class Path():
 
 
     def get_next_point(self):
-        print(f"next point: {self.nextPoint}")
+        print(f"PATH POINT ID: {self.nextPoint}")
         return self.points[self.nextPoint][0], self.points[self.nextPoint][1]
 
 
@@ -107,7 +107,6 @@ class Mover():
             if abs(self.goal_position.y - self.current_pose.position.y) < 0.2:
                 self.move_base_client.cancel_goal()
                 self.on_goal_reached(3, None)
-                print("FORCE REAHCED")
 
 
     # for easier access
@@ -145,7 +144,7 @@ class Mover():
 
         self.goal_position = goal_msg.target_pose.pose.position
 
-        rospy.loginfo(f"Moving to (x: {point.x}, y: {point.y})")
+        rospy.loginfo(f"NEXT GOAL: x={point.x:.3f}, y={point.y:.3f}, force={self.force_reach}")
 
         self.move_base_client.send_goal(goal_msg, self.on_goal_reached, None, self.on_goal_feedback) 
 
@@ -153,7 +152,6 @@ class Mover():
     # used to tell robot to follow his own path
     def follow_path(self):
         if self.is_following_path:
-            rospy.logwarn("Already following path")
             return
 
         self.is_following_path = True

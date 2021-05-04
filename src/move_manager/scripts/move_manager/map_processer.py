@@ -120,16 +120,13 @@ def transform_world_to_map(x,y, shape):
 
 
 def is_point_valid(x, y, image_data):
-    distance_from_edge = 4
+    distance_from_edge = 5
     x1, y1 = transform_world_to_map(x, y, image_data.shape)
     if (image_data.shape[0] > x1 and image_data.shape[1] > y1):
 
         if (check_square_around_point(image_data, distance_from_edge, int(x1), int(y1))):
             # check square around point
             return True
-        
-    else:
-        print("Point not valid")
     
     return False
 
@@ -137,7 +134,7 @@ def is_point_valid(x, y, image_data):
 def get_map_points(map_location):
     image = Image.open(map_location)
     image_data = asarray(image)
-    square_size = 20
+    square_size = 18
 
     squares = sample_squares(image_data, square_size)
     square_centers = [ ((s[0] + s[2])/2, (s[1]+s[3])/2) for s in squares]
