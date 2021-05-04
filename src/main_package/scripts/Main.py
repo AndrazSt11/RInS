@@ -744,8 +744,8 @@ class MainNode:
         distance =  math.sqrt((ringPose.x - robotPose.position.x)**2 + (ringPose.y - robotPose.position.y)**2) 
 
         # travel distance
-        if (distance > 0.2):
-            travelD = distance - 0.2
+        if (distance > 0.15):
+            travelD = distance - 0.15
         else:
             travelD = distance 
 
@@ -759,15 +759,17 @@ class MainNode:
 
         # TODO: point can still be invalid after correction
         # Test if valid
-        # if(not self.mover.is_valid(point)):
-        #     print("Greet ring point is invalid")
-        #     newPoints = self.getNewPoints(point, 0.2)
-        #     for newPoint in newPoints:
-        #         if(self.mover.is_valid(newPoint)):
-        #             point = newPoint
-        #             break
+        if(not self.mover.is_valid(point)):
+            print("Greet ring point is invalid")
+            newPoints = self.getNewPoints(point, 0.15)
+            for newPoint in newPoints:
+                if(self.mover.is_valid(newPoint)):
+                    point = newPoint
+                    break
+                else:
+                    print("Point: ", newPoint, " , is invalid")
 
-        # print("Is now point valid:", self.mover.is_valid(point))
+        print("Is now point valid:", self.mover.is_valid(point))
                     
 
         # current orientation of a robot
@@ -826,11 +828,17 @@ class MainNode:
         elif numLabel == 5:
             return "Yellow"  
 
-    def getNewPoints(self, point, offset):
+    def getNewPoints(self, point, offset): 
+        # checks points in radius around given point
+        
         p1 = Point()
         p2 = Point() 
         p3 = Point()
         p4 = Point()
+        p5 = Point()
+        p6 = Point() 
+        p7 = Point()
+        p8 = Point()
 
         # testing point 1
         p1.x = point.x + offset
@@ -851,8 +859,28 @@ class MainNode:
         p4.x = point.x 
         p4.y = point.y - offset
         p4.z = point.z 
+        
+        # testing point 5
+        p5.x = point.x + offset
+        p5.y = point.y + offset
+        p5.z = point.z 
+        
+        # testing point 6 
+        p6.x = point.x + offset
+        p6.y = point.y - offset
+        p6.z = point.z 
+        
+        # testing point 7 
+        p7.x = point.x - offset
+        p7.y = point.y + offset
+        p7.z = point.z 
+        
+        # testing point 8 
+        p8.x = point.x - offset
+        p8.y = point.y - offset
+        p8.z = point.z 
 
-        return [p1, p2, p3, p4]
+        return [p1, p2, p3, p4, p5, p6, p7, p8]
 
 
 def main():
