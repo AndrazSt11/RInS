@@ -67,7 +67,7 @@ class MainNode:
 
         # How many times we detect an object before we queue task
         self.min_detections = {
-            TaskType.RING: 2,
+            TaskType.RING: 1,
             TaskType.CYLINDER: 2,
             TaskType.FACE: 1,
         }
