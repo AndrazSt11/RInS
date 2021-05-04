@@ -110,12 +110,12 @@ class MainNode:
         # self.face_detection_marker_publisher = rospy.Publisher('detection', Detected, queue_size=10);  
 
         # All message passing nodes (cylinder)
-        self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.cylinderDetection)
-        self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
+        # self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.cylinderDetection)
+        # self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
 
         # All message passing nodes (rings)
-        # self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.ringDetection)
-        # self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10);
+        self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.ringDetection)
+        self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10);
 
 
     # Processes that need to be updated every iteration 
@@ -373,90 +373,94 @@ class MainNode:
             return
 
         # TODO: if not sure of the color move around cylinder
-        maxScore = max(self.mlpClf.predict_proba([data.colorHistogram])[0])
-        if maxScore < 0.95:
-            # TODO: move around the cylinder 
+        # maxScore = max(self.mlpClf.predict_proba([data.colorHistogram])[0])
+        # if maxScore < 0.95:
+        #     print("Not sure about color - move around")
+        #     # TODO: move around the cylinder 
 
-            robotPosition = self.mover.get_pose()
+        #     robotPosition = self.mover.get_pose()
+        #     print("Current robot position", robotPosition)
 
-            # we create 4 points 
-            p1 = Point()
-            p2 = Point() 
-            p3 = Point()
-            p4 = Point()
+        #     # we create 4 points 
+        #     p1 = Point()
+        #     p2 = Point() 
+        #     p3 = Point()
+        #     p4 = Point()
 
-            # testing point 1
-            p1.x = robotPosition.position.x + 0.5
-            p1.y = robotPosition.position.y
-            p1.z = robotPosition.position.z 
+        #     # testing point 1
+        #     p1.x = robotPosition.position.x + 0.5
+        #     p1.y = robotPosition.position.y
+        #     p1.z = robotPosition.position.z 
 
-            # testing point 2 
-            p2.x = robotPosition.position.x - 0.5 
-            p2.y = robotPosition.position.y 
-            p2.z = robotPosition.position.z  
+        #     # testing point 2 
+        #     p2.x = robotPosition.position.x - 0.5 
+        #     p2.y = robotPosition.position.y 
+        #     p2.z = robotPosition.position.z  
 
-            # testing point 3
-            p3.x = robotPosition.position.x 
-            p3.y = robotPosition.position.y + 0.5
-            p3.z = robotPosition.position.z 
+        #     # testing point 3
+        #     p3.x = robotPosition.position.x 
+        #     p3.y = robotPosition.position.y + 0.5
+        #     p3.z = robotPosition.position.z 
 
-            # testing point 4 
-            p4.x = robotPosition.position.x 
-            p4.y = robotPosition.position.y - 0.5 
-            p4.z = robotPosition.position.z 
+        #     # testing point 4 
+        #     p4.x = robotPosition.position.x 
+        #     p4.y = robotPosition.position.y - 0.5 
+        #     p4.z = robotPosition.position.z 
 
-            finalPoint = Point()
+        #     finalPoint = Point()
 
-            if (self.mover.is_valid(p1)): 
-                # move around to p1 
-                print("Moving to point p1")
-                fi = math.atan2(data.cylinder_y - p1.y, data.cylinder_x - p1.x) 
-                finalPoint = p1 
+        #     if (self.mover.is_valid(p1)): 
+        #         # move around to p1 
+        #         print("Moving to point p1")
+        #         fi = math.atan2(data.cylinder_y - p1.y, data.cylinder_x - p1.x) 
+        #         finalPoint = p1 
 
-            elif (self.mover.is_valid(p2)):
-                # move around to p2 
-                print("Moving to point p2")
-                fi = math.atan2(data.cylinder_y - p2.y, data.cylinder_x - p2.x) 
-                finalPoint = p2 
+        #     elif (self.mover.is_valid(p2)):
+        #         # move around to p2 
+        #         print("Moving to point p2")
+        #         fi = math.atan2(data.cylinder_y - p2.y, data.cylinder_x - p2.x) 
+        #         finalPoint = p2 
 
-            elif (self.mover.is_valid(p3)): 
-                # move around to p3 
-                print("Moving to point p3")
-                fi = math.atan2(data.cylinder_y - p3.y, data.cylinder_x - p3.x) 
-                finalPoint = p3 
+        #     elif (self.mover.is_valid(p3)): 
+        #         # move around to p3 
+        #         print("Moving to point p3")
+        #         fi = math.atan2(data.cylinder_y - p3.y, data.cylinder_x - p3.x) 
+        #         finalPoint = p3 
 
-            elif (self.mover.is_valid(p4)): 
-                # move around to p4 
-                print("Moving to point p4")
-                fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x) 
-                finalPoint = p4 
-            else: 
-            	finalPoint = robotPosition.position 
-            	fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x)
+        #     elif (self.mover.is_valid(p4)): 
+        #         # move around to p4 
+        #         print("Moving to point p4")
+        #         fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x) 
+        #         finalPoint = p4 
+        #     else: 
+        #     	finalPoint = robotPosition.position 
+        #     	fi = math.atan2(data.cylinder_y - p4.y, data.cylinder_x - p4.x)
+
+        #     print("Destination", finalPoint)
 
 
-            # current orientation of a robot 
-            Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPosition.orientation.x, robotPosition.orientation.y, robotPosition.orientation.z, robotPosition.orientation.w)
+        #     # current orientation of a robot 
+        #     Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPosition.orientation.x, robotPosition.orientation.y, robotPosition.orientation.z, robotPosition.orientation.w)
 
-            # new yaw 
-            yaw_z = fi - Ryaw_z
+        #     # new yaw 
+        #     yaw_z = fi - Ryaw_z
 
-            # back to quaternions 
-            nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z)
+        #     # back to quaternions 
+        #     nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z)
 
-            quaternion = Quaternion(nX, nY, nZ, nW) 
+        #     quaternion = Quaternion(nX, nY, nZ, nW) 
 
-            # stop the robot 
-            self.mover.stop_robot()
+        #     # stop the robot 
+        #     self.mover.stop_robot()
 
-            # move the robot around the cylinder
-            self.mover.move_around(finalPoint, quaternion) 
+        #     # move the robot around the cylinder
+        #     self.mover.move_around(finalPoint, quaternion) 
 
-            # if (not self.mover.traveling):
-                # follow the path back 
-            self.mover.follow_path()
+        #     # if (not self.mover.traveling):
+        #         # follow the path back 
+        #         # self.mover.follow_path()
             
-            return # temporary solution
+        #     return # temporary solution
 
         # Compute cylinder normal 
         robotPose = self.mover.get_pose() 
@@ -547,6 +551,7 @@ class MainNode:
 
     def ringDetection(self, data): 
         print("Ring detected")
+        print("Color", data.color)
 
         if (self.state == State.RING_DETECTED) or (self.state == State.FINISH):
             return
@@ -739,8 +744,8 @@ class MainNode:
         distance =  math.sqrt((ringPose.x - robotPose.position.x)**2 + (ringPose.y - robotPose.position.y)**2) 
 
         # travel distance
-        if (distance > 0.5):
-            travelD = distance - 0.5
+        if (distance > 0.2):
+            travelD = distance - 0.2
         else:
             travelD = distance 
 
@@ -751,6 +756,19 @@ class MainNode:
         greetY = robotPose.position.y + travelD * math.sin(fi) 
 
         point = Point(greetX, greetY, greetZ)
+
+        # TODO: point can still be invalid after correction
+        # Test if valid
+        # if(not self.mover.is_valid(point)):
+        #     print("Greet ring point is invalid")
+        #     newPoints = self.getNewPoints(point, 0.2)
+        #     for newPoint in newPoints:
+        #         if(self.mover.is_valid(newPoint)):
+        #             point = newPoint
+        #             break
+
+        # print("Is now point valid:", self.mover.is_valid(point))
+                    
 
         # current orientation of a robot
         Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
@@ -808,6 +826,33 @@ class MainNode:
         elif numLabel == 5:
             return "Yellow"  
 
+    def getNewPoints(self, point, offset):
+        p1 = Point()
+        p2 = Point() 
+        p3 = Point()
+        p4 = Point()
+
+        # testing point 1
+        p1.x = point.x + offset
+        p1.y = point.y
+        p1.z = point.z 
+
+        # testing point 2 
+        p2.x = point.x - offset
+        p2.y = point.y 
+        p2.z = point.z  
+
+        # testing point 3
+        p3.x = point.x 
+        p3.y = point.y + offset
+        p3.z = point.z 
+
+        # testing point 4 
+        p4.x = point.x 
+        p4.y = point.y - offset
+        p4.z = point.z 
+
+        return [p1, p2, p3, p4]
 
 
 def main():
