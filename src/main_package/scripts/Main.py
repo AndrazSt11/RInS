@@ -110,12 +110,12 @@ class MainNode:
         # self.face_detection_marker_publisher = rospy.Publisher('detection', Detected, queue_size=10);  
 
         # All message passing nodes (cylinder)
-        # self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.cylinderDetection)
-        # self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
+        self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.cylinderDetection)
+        self.cylinder_detection_marker_publisher = rospy.Publisher('detectionC', CylinderD, queue_size=10); 
 
         # All message passing nodes (rings)
         self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.ringDetection)
-        self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10);
+        self.ring_detection_marker_publisher = rospy.Publisher('detectionR', DetectedR, queue_size=10)
 
 
     # Processes that need to be updated every iteration 
@@ -157,7 +157,7 @@ class MainNode:
 
             # greet
             greetPoint, greetOrientation = self.greetFace(robotPose, facePoint)
-            self.mover.move_to(greetPoint, greetOrientation)
+            self.mover.move_to(greetPoint, greetOrientation, force_reach=False)
 
             self.state = State.GREET_FACE
             return
@@ -177,7 +177,7 @@ class MainNode:
 
             # greet
             greetPoint, greetOrientation = self.greetCylinder(robotPose, cylinderPoint)
-            self.mover.move_to(greetPoint, greetOrientation)
+            self.mover.move_to(greetPoint, greetOrientation, force_reach=False)
 
             self.state = State.GREET_CYLINDER
             return 
@@ -200,7 +200,7 @@ class MainNode:
 
             # greet
             greetPoint, greetOrientation = self.greetRing(robotPose, ringPoint)
-            self.mover.move_to(greetPoint, greetOrientation)
+            self.mover.move_to(greetPoint, greetOrientation, force_reach=False)
 
             self.state = State.GREET_RING
             return
@@ -673,7 +673,12 @@ class MainNode:
         greetX = robotPose.position.x + travelD * math.cos(fi)
         greetY = robotPose.position.y + travelD * math.sin(fi) 
 
-        point = Point(greetX, greetY, greetZ)
+        initial_point = Point(greetX, greetY, greetZ)
+
+        point = self.get_valid_point_near(initial_point)
+        if not point:
+            rospy.logwarn("Point is invalid, not going to ring.")
+            point = robotPose.position
 
         # current orientation of a robot
         Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
@@ -714,7 +719,12 @@ class MainNode:
         greetX = robotPose.position.x + travelD * math.cos(fi)
         greetY = robotPose.position.y + travelD * math.sin(fi) 
 
-        point = Point(greetX, greetY, greetZ)
+        initial_point = Point(greetX, greetY, greetZ)
+
+        point = self.get_valid_point_near(initial_point)
+        if not point:
+            rospy.logwarn("Point is invalid, not going to ring.")
+            point = robotPose.position
 
         # current orientation of a robot
         Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
@@ -755,22 +765,12 @@ class MainNode:
         greetX = robotPose.position.x + travelD * math.cos(fi)
         greetY = robotPose.position.y + travelD * math.sin(fi) 
 
-        point = Point(greetX, greetY, greetZ)
+        initial_point = Point(greetX, greetY, greetZ)
 
-        # TODO: point can still be invalid after correction
-        # Test if valid
-        if(not self.mover.is_valid(point)):
-            print("Greet ring point is invalid")
-            newPoints = self.getNewPoints(point, 0.15)
-            for newPoint in newPoints:
-                if(self.mover.is_valid(newPoint)):
-                    point = newPoint
-                    break
-                else:
-                    print("Point: ", newPoint, " , is invalid")
-
-        print("Is now point valid:", self.mover.is_valid(point))
-                    
+        point = self.get_valid_point_near(initial_point)
+        if not point:
+            rospy.logwarn("Point is invalid, not going to ring.")
+            point = robotPose.position
 
         # current orientation of a robot
         Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robotPose.orientation.x, robotPose.orientation.y, robotPose.orientation.z, robotPose.orientation.w) 
@@ -826,61 +826,18 @@ class MainNode:
         elif numLabel == 4:
             return "White"
         elif numLabel == 5:
-            return "Yellow"  
+            return "Yellow"
 
-    def getNewPoints(self, point, offset): 
-        # checks points in radius around given point
+    def get_valid_point_near(self, point):
+        # Try with different offsets
+        for offset in [0.15, 0.2, 0.25, 0.35, 0.4, 0.5]:
+            for x in [0, -offset, offset]:
+                for y in [0, -offset, offset]:
+                    temp = Point( point.x + x, point.y + y, 0)
+                    if self.mover.is_valid(temp):
+                        return temp
         
-        p1 = Point()
-        p2 = Point() 
-        p3 = Point()
-        p4 = Point()
-        p5 = Point()
-        p6 = Point() 
-        p7 = Point()
-        p8 = Point()
-
-        # testing point 1
-        p1.x = point.x + offset
-        p1.y = point.y
-        p1.z = point.z 
-
-        # testing point 2 
-        p2.x = point.x - offset
-        p2.y = point.y 
-        p2.z = point.z  
-
-        # testing point 3
-        p3.x = point.x 
-        p3.y = point.y + offset
-        p3.z = point.z 
-
-        # testing point 4 
-        p4.x = point.x 
-        p4.y = point.y - offset
-        p4.z = point.z 
-        
-        # testing point 5
-        p5.x = point.x + offset
-        p5.y = point.y + offset
-        p5.z = point.z 
-        
-        # testing point 6 
-        p6.x = point.x + offset
-        p6.y = point.y - offset
-        p6.z = point.z 
-        
-        # testing point 7 
-        p7.x = point.x - offset
-        p7.y = point.y + offset
-        p7.z = point.z 
-        
-        # testing point 8 
-        p8.x = point.x - offset
-        p8.y = point.y - offset
-        p8.z = point.z 
-
-        return [p1, p2, p3, p4, p5, p6, p7, p8]
+        return False
 
 
 def main():
