@@ -162,8 +162,8 @@ class MainNode:
                         self.mover.move_to(point, quat, force_reach=False)
 
 
-        # if self.state == State.EXPLORE:
-        #     self.mover.follow_path()
+        if self.state == State.EXPLORE:
+            self.mover.follow_path()
         
 
         if self.state == State.FINISH: 
