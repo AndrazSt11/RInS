@@ -137,10 +137,10 @@ class Mover():
         goal_msg.target_pose.pose.position.x = point.x
         goal_msg.target_pose.pose.position.y = point.y
         goal_msg.target_pose.pose.position.z = 0.0
-        goal_msg.target_pose.pose.orientation.x = 0
-        goal_msg.target_pose.pose.orientation.y = 0
-        goal_msg.target_pose.pose.orientation.z = 0
-        goal_msg.target_pose.pose.orientation.w = 1
+        goal_msg.target_pose.pose.orientation.x = quat.x
+        goal_msg.target_pose.pose.orientation.y = quat.y
+        goal_msg.target_pose.pose.orientation.z = quat.z
+        goal_msg.target_pose.pose.orientation.w = quat.w
         goal_msg.target_pose.header.stamp = rospy.get_rostime()
 
         self.goal_position = goal_msg.target_pose.pose.position

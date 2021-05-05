@@ -6,6 +6,7 @@ import rospy
 from enum import Enum 
 from time import sleep
 
+from tf import transformations
 import tf2_geometry_msgs
 import tf2_ros
 
@@ -85,7 +86,7 @@ class MainNode:
         self.marker_publishers = {
             TaskType.RING: rospy.Publisher('detectionR', DetectedR, queue_size=10),
             TaskType.CYLINDER: rospy.Publisher('detectionC', CylinderD, queue_size=10),
-            # TaskType.FACE: rospy.Publisher('detection', Detected, queue_size=10),
+            TaskType.FACE: rospy.Publisher('detection', Detected, queue_size=10),
         }
 
         self.mover = Mover()
@@ -95,7 +96,7 @@ class MainNode:
         self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=1)
 
         # All message passing nodes
-        # self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
+        self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
         self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.on_cylinder_detection)
         self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection)
 
@@ -128,7 +129,7 @@ class MainNode:
             success, point, quat = self.get_task_point(self.current_task)
             if success:
                 self.state = State.BUSY
-                self.mover.move_to(point, quat, force_reach=True)
+                self.mover.move_to(point, quat, force_reach=False)
             else:
                 self.abort_task(self.current_task)
                 self.state = State.STATIONARY
@@ -158,11 +159,11 @@ class MainNode:
                     if success:
                         print("Updated greet position")
                         self.mover.stop_robot()
-                        self.mover.move_to(point, quat, force_reach=True)
+                        self.mover.move_to(point, quat, force_reach=False)
 
 
-        if self.state == State.EXPLORE:
-            self.mover.follow_path()
+        # if self.state == State.EXPLORE:
+        #     self.mover.follow_path()
         
 
         if self.state == State.FINISH: 
@@ -171,34 +172,28 @@ class MainNode:
         #rospy.loginfo(f"MAIN STATE: {self.state}")
 
     #--------------------- TASK HANDLERS ------------------------
+
+
     def get_task_point(self, task):
         robot_pose = self.mover.get_pose()
 
         # travel distance
         travel_distance = math.sqrt((task.x - robot_pose.position.x)**2 + (task.y - robot_pose.position.y)**2)
-        #min_dist = 0.15 #0.15 if task.type == TaskType.RING else 0.5
-        #if travel_distance > min_dist:
-        #    travel_distance -= min_dist
 
-        fi = math.atan2(task.y - robot_pose.position.y, task.x - robot_pose.position.x)
-        initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi), robot_pose.position.y + travel_distance * math.sin(fi), 0.0)
+
+        fi1 = math.atan2(task.y - robot_pose.position.y, task.x - robot_pose.position.x)
+        initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi1), robot_pose.position.y + travel_distance * math.sin(fi1), 0.0)
 
         point = self.get_valid_point_near(initial_point)
         if not point:
             rospy.logwarn(f"Couldn't find a valid point. Aborting task: id={task.id}")
             return False, None, None
 
-        # current orientation of a robot
-        Rroll_x, Rpitch_y, Ryaw_z = self.euler_from_quaternion(robot_pose.orientation.x, robot_pose.orientation.y, robot_pose.orientation.z, robot_pose.orientation.w) 
+        # Orient to object
+        fi = math.atan2(task.y - point.y, task.x - point.x)
+        quat = transformations.quaternion_from_euler(0, 0, fi)
 
-        # new yaw 
-        yaw_z = fi - Ryaw_z
-
-        # back to quaternions 
-        nX, nY, nZ, nW = self.euler_to_quaternion(Rroll_x, Rpitch_y, yaw_z) 
-        quaternion = Quaternion(nX, nY, nZ, nW)
-
-        return True, point, quaternion
+        return True, point, Quaternion(0, 0, quat[2], quat[3])
 
 
     def get_next_task(self):
@@ -297,7 +292,6 @@ class MainNode:
             # upadte marker
             self.publish_task_marker(new_task, exists=False)
 
-
         # lets check if we need to queue it
         if (new_task.num_of_detections >= self.min_detections[type]) and (not new_task in self.tasks):
             print("New task added:", new_task.type, new_task.color)
@@ -371,13 +365,26 @@ class MainNode:
 
 
     def euler_to_quaternion(self, roll, pitch, yaw):
-
         qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
         qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
         qz = np.cos(roll/2) * np.cos(pitch/2) * np.sin(yaw/2) - np.sin(roll/2) * np.sin(pitch/2) * np.cos(yaw/2)
         qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
 
         return qx, qy, qz, qw
+
+
+    def get_quaternions(self, fi): 
+        # q1 = math.cos(fi/2)
+        # q2 = 0
+        # q3 = 0 
+        # q4 = math.sin(fi/2)
+
+        q1 = 0
+        q2 = 0
+        q3 = 0 
+        q4 = 1
+        
+        return q1, q2, q3, q4
 
 
     def get_color_label(self, num):
