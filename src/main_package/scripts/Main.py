@@ -124,9 +124,8 @@ class MainNode:
 
         if self.state == State.APPROACH:
             self.mover.stop_robot()
-
-            print(self.current_task.type)
             success, point, quat = self.get_task_point(self.current_task)
+
             if success:
                 self.state = State.BUSY
                 self.mover.move_to(point, quat, force_reach=False)
@@ -212,6 +211,11 @@ class MainNode:
     def abort_task(self, task):
         rospy.logwarn(f"Aborting task: id={task.id} type={task.type}")
         task.aborted = True
+
+        # Remove from queue
+        self.tasks.pop(0)
+        # self.remove_from_history(task)
+
         self.state = State.STATIONARY
 
 
@@ -226,7 +230,7 @@ class MainNode:
     
     def task_exists_history(self, task):
         # Checks if already exists
-        for old_task in self.history[task.type]:            
+        for old_task in self.history[task.type]:    
             # Check normal and distance
             normal_compare = old_task.norm_x * task.norm_x + old_task.norm_y * task.norm_y
             d = math.sqrt((old_task.x - task.x)**2 + (old_task.y - task.y)**2 + (old_task.z - task.z)**2) 
@@ -238,7 +242,6 @@ class MainNode:
             # Task exists if correct distance away and same color
             if d < 1.4 and task.color == old_task.color:
                 return old_task
-
 
     def update_task(self, old, new):
         # update detecion num
@@ -410,7 +413,7 @@ class MainNode:
 
     def get_valid_point_near(self, point):
         # Try with different offsets
-        for offset in [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]:
+        for offset in [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
             for x in [0, -offset, offset]:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
