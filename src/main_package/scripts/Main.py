@@ -146,6 +146,8 @@ class MainNode:
 
                     elif self.current_task.type == TaskType.FACE:
                         self.on_face_reached()
+
+                    self.remove_finished_task()
                 else:
                     rospy.logwarn("No task in BUSY state?")
 
@@ -198,9 +200,14 @@ class MainNode:
 
     def get_next_task(self):
         if len(self.tasks) > 0:
-            return self.tasks.pop(0)
+            return self.tasks[0]
         
         return False
+
+    def remove_finished_task(self):
+        if len(self.tasks) > 0:
+            self.tasks.pop(0)
+
 
     def abort_task(self, task):
         rospy.logwarn(f"Aborting task: id={task.id} type={task.type}")
@@ -217,10 +224,9 @@ class MainNode:
                 publisher.publish(task.x, task.y, task.z, task.color, exists, task.id)
 
     
-    def task_exists(self, task):
-        # Checks if face already exists
-        for old_task in self.history[task.type]:
-            
+    def task_exists_history(self, task):
+        # Checks if already exists
+        for old_task in self.history[task.type]:            
             # Check normal and distance
             normal_compare = old_task.norm_x * task.norm_x + old_task.norm_y * task.norm_y
             d = math.sqrt((old_task.x - task.x)**2 + (old_task.y - task.y)**2 + (old_task.z - task.z)**2) 
@@ -273,7 +279,7 @@ class MainNode:
         normal = normal / np.linalg.norm(normal)
 
         new_task = Task(type, len(self.history[type]), x, y, z, normal[0], normal[1], color)
-        old_task = self.task_exists(new_task)
+        old_task = self.task_exists_history(new_task)
 
         # Check if we should update the task or create a new one
         if old_task:
@@ -282,7 +288,7 @@ class MainNode:
             # we don't want to repeat the same task
             if old_task.finished:
                 return
-            
+
             new_task = old_task
 
         else:
