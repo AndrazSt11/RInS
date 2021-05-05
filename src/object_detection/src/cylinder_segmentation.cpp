@@ -267,10 +267,12 @@ void cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
       marker.lifetime = ros::Duration();
 
       pubm.publish (marker);*/
-
-      pcl::PCLPointCloud2 outcloud_cylinder;
-      pcl::toPCLPointCloud2(*cloud_cylinder, outcloud_cylinder);
-      puby.publish(outcloud_cylinder);
+      
+      //if (msg.cylinder_z <= 0.65) {
+          pcl::PCLPointCloud2 outcloud_cylinder;
+          pcl::toPCLPointCloud2(*cloud_cylinder, outcloud_cylinder);
+          puby.publish(outcloud_cylinder);
+      //}
 
   }
   

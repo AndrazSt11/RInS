@@ -98,7 +98,10 @@ class MainNode:
         # All message passing nodes
         self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
         self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.on_cylinder_detection)
-        self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection)
+        self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection) 
+        
+        # soundhandle
+        # self.soundhandle = SoundClient()
 
 
     # this runs before every execute
@@ -317,10 +320,10 @@ class MainNode:
         volume = 2.0
         s = "Hello human, how are you today?"
 
-        #soundhandle.say(s, voice, volume)
+        #self.soundhandle.say(s, voice, volume)
         rospy.loginfo(f"Greeting face - {self.current_task.id}")
         self.current_task.finished = True
-        rospy.sleep(3)
+        rospy.sleep(1)
 
 
     # CYLINDERS
@@ -332,13 +335,21 @@ class MainNode:
 
         self.add_task(TaskType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, color)
     
-    def on_cylinder_reached(self):
+    def on_cylinder_reached(self): 
+    
+        soundhandle = SoundClient() 
+        voice = 'voice_kal_diphone'
+        volume = 5.0 
+        s = "Color of the cylinder is: " + self.current_task.color
+        
+        rospy.sleep(1)
         rospy.loginfo(f"Greeting cylinder - {self.current_task.id}, color: {self.current_task.color}") 
+        soundhandle.say(s, voice, volume)
         self.robot_arm.publish("extend")
         rospy.sleep(1) 
         self.robot_arm.publish("retract")
         self.current_task.finished = True
-        rospy.sleep(3)
+        rospy.sleep(1)
 
 
     # RINGS
@@ -350,9 +361,16 @@ class MainNode:
         self.add_task(TaskType.RING, data.ring_x, data.ring_y, data.ring_z, data.color)
 
     def on_ring_reached(self):
+        soundhandle = SoundClient()
+        voice = 'voice_kal_diphone'
+        volume = 5.0 
+        s = "Color of the ring is: " + self.current_task.color
+    
         rospy.loginfo(f"Greeting ring - id: {self.current_task.id}, color: {self.current_task.color}")
+        rospy.sleep(1)
+        soundhandle.say(s, voice, volume)
         self.current_task.finished = True
-        rospy.sleep(3)
+        rospy.sleep(1)
     
 
     #---------------------------- HELPERS ---------------------------
