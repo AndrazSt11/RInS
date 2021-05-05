@@ -68,7 +68,7 @@ class MainNode:
         # How many times we detect an object before we queue task
         self.min_detections = {
             TaskType.RING: 1,
-            TaskType.CYLINDER: 2,
+            TaskType.CYLINDER: 1,
             TaskType.FACE: 1,
         }
 
@@ -93,7 +93,7 @@ class MainNode:
         # self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=1)
 
         # All message passing nodes
-        # self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
+        self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
         self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.on_cylinder_detection)
         self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection)
 
@@ -216,8 +216,12 @@ class MainNode:
             normal_compare = old_task.norm_x * task.norm_x + old_task.norm_y * task.norm_y
             d = math.sqrt((old_task.x - task.x)**2 + (old_task.y - task.y)**2 + (old_task.z - task.z)**2) 
 
-            # Task exists if correct distance away and its normal is aprox max 60 degrees different and same color
-            if d < 1.1 and normal_compare > 0.06 and task.color == old_task.color:
+            # Compare normals only for faces
+            if task.type == TaskType.FACE and normal_compare < 0.06: 
+                continue
+
+            # Task exists if correct distance away and same color
+            if d < 1.1 and task.color == old_task.color:
                 return old_task
 
 
@@ -318,6 +322,10 @@ class MainNode:
 
     # RINGS
     def on_ring_detection(self, data):
+        if data.color == "White":
+            rospy.logwarn(f"Ring detection: false-positive color={data.color}")
+            return
+
         self.add_task(TaskType.RING, data.ring_x, data.ring_y, data.ring_z, data.color)
 
     def on_ring_reached(self):
