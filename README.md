@@ -20,6 +20,7 @@ roslaunch object_detection find_cylinder.launch 2>/dev/null
 rosrun face_detector cylinder_markers 2>/dev/null
 rosrun object_detection detect_rings 2>/dev/null
 rosrun object_detection ring_markers 2>/dev/null
-# if robot arm is activated: rosrun robot_arm move_arm.py
+# if robot arm is activated: rosrun robot_arm move_arm.py 
+rosrun sound_play soundplay_node.py
 rosrun main_package Main.py
 ```
