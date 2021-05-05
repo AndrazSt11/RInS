@@ -25,7 +25,7 @@ class Arm_Mover():
 
         self.extend = JointTrajectory()
         self.extend.joint_names = ["arm_shoulder_pan_joint", "arm_shoulder_lift_joint", "arm_elbow_flex_joint", "arm_wrist_flex_joint"]
-        self.extend.points = [JointTrajectoryPoint(positions=[-1.5,0.7,0.5,0],
+        self.extend.points = [JointTrajectoryPoint(positions=[0,0.7,0.5,0],
                                                     time_from_start = rospy.Duration(1))]
 
     def new_user_command(self, data):

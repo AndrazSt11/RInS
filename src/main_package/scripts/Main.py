@@ -85,17 +85,17 @@ class MainNode:
         self.marker_publishers = {
             TaskType.RING: rospy.Publisher('detectionR', DetectedR, queue_size=10),
             TaskType.CYLINDER: rospy.Publisher('detectionC', CylinderD, queue_size=10),
-            TaskType.FACE: rospy.Publisher('detection', Detected, queue_size=10),
+            # TaskType.FACE: rospy.Publisher('detection', Detected, queue_size=10),
         }
 
         self.mover = Mover()
         self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl") 
 
         # publisher for robot arm 
-        # self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=1)
+        self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=1)
 
         # All message passing nodes
-        self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
+        # self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
         self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.on_cylinder_detection)
         self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection)
 
@@ -131,6 +131,7 @@ class MainNode:
                 self.mover.move_to(point, quat, force_reach=True)
             else:
                 self.abort_task(self.current_task)
+                self.state = State.STATIONARY
 
 
         if self.state == State.BUSY:
@@ -329,7 +330,10 @@ class MainNode:
         self.add_task(TaskType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, color)
     
     def on_cylinder_reached(self):
-        rospy.loginfo(f"Greeting cylinder - id: {self.current_task.id}, color: {self.current_task.color}")
+        rospy.loginfo(f"Greeting cylinder - {self.current_task.id}, color: {self.current_task.color}") 
+        self.robot_arm.publish("extend")
+        rospy.sleep(1) 
+        self.robot_arm.publish("retract")
         self.current_task.finished = True
         rospy.sleep(3)
 
