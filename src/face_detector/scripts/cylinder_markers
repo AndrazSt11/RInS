@@ -35,7 +35,7 @@ class Markers:
             marker.header.stamp = rospy.Time(0)
             marker.header.frame_id = 'map'
             marker.pose = pose
-            marker.type = Marker.CYLINDER
+            marker.type = Marker.CUBE
             marker.action = Marker.ADD
             marker.frame_locked = False
             marker.lifetime = rospy.Duration.from_sec(0)

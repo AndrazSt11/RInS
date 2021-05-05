@@ -134,7 +134,7 @@ def is_point_valid(x, y, image_data):
 def get_map_points(map_location):
     image = Image.open(map_location)
     image_data = asarray(image)
-    square_size = 23
+    square_size = 17
 
     squares = sample_squares(image_data, square_size)
     square_centers = [ ((s[0] + s[2])/2, (s[1]+s[3])/2) for s in squares]

@@ -41,7 +41,7 @@ class Markers:
             marker.lifetime = rospy.Duration.from_sec(0)
             marker.id = self.marker_num 
             marker.scale = Vector3(0.1, 0.1, 0.1)
-            marker.color = ColorRGBA(1, 0, 0, 1) 
+            marker.color = ColorRGBA(1, 1, 1, 1) 
 
             if (len(self.marker_array.markers) == 0 or exists == False): 
                 # create a marker for new face

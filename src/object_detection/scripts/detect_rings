@@ -102,11 +102,11 @@ class The_Ring:
         # Set the dimensions of the image
         self.dims = rgb_image.shape
 
-        # Tranform image to gayscale
+        # Color pipeline
         # gray = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2GRAY)
-
-        # Do histogram equlization
         # img = cv2.equalizeHist(gray)
+
+        # Depth pipeline
         img = self.depthToGrayScale(depth_image)
 
         # Binarize the image
@@ -116,7 +116,7 @@ class The_Ring:
         # cv2.waitKey(1)
 
         # Extract contours
-        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE) # TODO: test parameter
+        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE) 
 
         # Fit elipses to all extracted contours
         # elps = (x_centre,y_centre),(minor_axis,major_axis), angle

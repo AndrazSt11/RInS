@@ -41,6 +41,7 @@ class Path():
         if len(self.points) > self.nextPoint+1:
             self.nextPoint += 1
         else:
+            self.points.reverse()
             self.nextPoint = 0
     
     def revert_point(self):

@@ -52,6 +52,8 @@ class Task:
         self.norm_y = norm_y 
 
         self.num_of_detections = 1 
+        self.update_greet_index = 1
+
         self.finished = False
         self.aborted = False
 
@@ -122,6 +124,7 @@ class MainNode:
         if self.state == State.APPROACH:
             self.mover.stop_robot()
 
+            print(self.current_task.type)
             success, point, quat = self.get_task_point(self.current_task)
             if success:
                 self.state = State.BUSY
@@ -132,7 +135,6 @@ class MainNode:
 
         if self.state == State.BUSY:
             if not self.mover.traveling:
-                
                 if self.current_task:
                     if self.current_task.type == TaskType.RING:
                         self.on_ring_reached()
@@ -146,6 +148,16 @@ class MainNode:
                     rospy.logwarn("No task in BUSY state?")
 
                 self.state = State.STATIONARY
+            
+            elif self.current_task: # NOTE: avoiding bool error
+                if self.current_task.num_of_detections > self.current_task.update_greet_index * 2:
+                    self.current_task.update_greet_index += 1
+
+                    success, point, quat = self.get_task_point(self.current_task)
+                    if success:
+                        print("Updated greet position")
+                        self.mover.stop_robot()
+                        self.mover.move_to(point, quat, force_reach=True)
 
 
         if self.state == State.EXPLORE:
@@ -197,6 +209,7 @@ class MainNode:
     def abort_task(self, task):
         rospy.logwarn(f"Aborting task: id={task.id} type={task.type}")
         task.aborted = True
+        self.state = State.STATIONARY
 
 
     def publish_task_marker(self, task, exists):
@@ -221,7 +234,7 @@ class MainNode:
                 continue
 
             # Task exists if correct distance away and same color
-            if d < 1.1 and task.color == old_task.color:
+            if d < 1.4 and task.color == old_task.color:
                 return old_task
 
 
@@ -286,6 +299,7 @@ class MainNode:
 
         # lets check if we need to queue it
         if (new_task.num_of_detections >= self.min_detections[type]) and (not new_task in self.tasks):
+            print("New task added:", new_task.type, new_task.color)
             self.tasks.append(new_task)
 
 
@@ -315,7 +329,7 @@ class MainNode:
         self.add_task(TaskType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, color)
     
     def on_cylinder_reached(self):
-        rospy.loginfo(f"Greeting cylinder - {self.current_task.id}")
+        rospy.loginfo(f"Greeting cylinder - id: {self.current_task.id}, color: {self.current_task.color}")
         self.current_task.finished = True
         rospy.sleep(3)
 
@@ -329,7 +343,7 @@ class MainNode:
         self.add_task(TaskType.RING, data.ring_x, data.ring_y, data.ring_z, data.color)
 
     def on_ring_reached(self):
-        rospy.loginfo(f"Greeting ring - {self.current_task.id}")
+        rospy.loginfo(f"Greeting ring - id: {self.current_task.id}, color: {self.current_task.color}")
         self.current_task.finished = True
         rospy.sleep(3)
     
