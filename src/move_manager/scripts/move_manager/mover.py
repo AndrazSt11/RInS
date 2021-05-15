@@ -99,6 +99,8 @@ class Mover():
 
     # feedback callback
     def on_goal_feedback(self, feedback):
+        # print(feedback)
+
         self.current_pose = feedback.base_position.pose
 
         if not self.force_reach:
@@ -114,7 +116,12 @@ class Mover():
     def move_to_next_point(self):
         if not self.traveling:
             x, y = self.path.get_next_point()
-            self.move_to(Point(x,y,0.0))
+            moveToPoint = Point(x, y, 0.0)
+
+            if not self.is_valid(moveToPoint):
+                moveToPoint = self.get_valid_point_near(moveToPoint)
+
+            self.move_to(moveToPoint)
 
 
     # returns current pose of robot
@@ -157,6 +164,18 @@ class Mover():
 
         self.is_following_path = True
         self.move_to_next_point()
+        
+
+    def get_valid_point_near(self, point):
+        # Try with different offsets
+        for offset in [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
+            for x in [0, -offset, offset]:
+                for y in [0, -offset, offset]:
+                    temp = Point( point.x + x, point.y + y, 0)
+                    if self.mover.is_valid(temp):
+                        return temp
+        
+        return False
 
 
     # stop following next goal (path or any other point)

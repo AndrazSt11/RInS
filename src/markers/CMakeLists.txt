@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(face_detector)
+project(markers)
 
 find_package(catkin REQUIRED COMPONENTS
 	roscpp
@@ -16,7 +16,9 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_message_files(
   FILES
-  FaceDetected.msg
+  FaceDetectedMarker.msg
+  CylinderDetectedMarker.msg
+  RingDetectedMarker.msg
 )
 
 generate_messages(DEPENDENCIES std_msgs)

@@ -1,0 +1,84 @@
+#!/usr/bin/python3
+
+import rospy
+from geometry_msgs.msg import Vector3, Pose
+from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import ColorRGBA 
+from markers.msg import CylinderDetectedMarker
+
+class Markers: 
+    def __init__(self):
+
+        # Marker array object used for showing markers in Rviz
+        self.marker_array = MarkerArray()
+        self.marker_num = 1 
+
+        # Publiser for the visualization markers
+        self.markers_pub = rospy.Publisher('cylinder_markers', MarkerArray, queue_size=1000) 
+
+    def drawMarkers(self, pose, exists, index, color):
+        if pose is not None:
+            # Create a marker used for visualization 
+            print("Position: ", pose)
+            self.marker_num += 1
+            marker = Marker()
+            marker.header.stamp = rospy.Time(0)
+            marker.header.frame_id = 'map'
+            marker.pose = pose
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.frame_locked = False
+            marker.lifetime = rospy.Duration.from_sec(0)
+            marker.id = self.marker_num 
+            marker.scale = Vector3(0.1, 0.1, 0.1)
+
+            if (color == "Black"):
+                marker.color = ColorRGBA(0, 0, 0, 1) 
+            elif (color == "Blue"):
+                marker.color = ColorRGBA(0, 0, 255, 1) 
+            elif (color == "Green"): 
+                marker.color = ColorRGBA(0, 132, 0, 1) 
+            elif (color == "Red"): 
+                marker.color = ColorRGBA(164, 0, 0, 1) 
+            elif (color == "White"): 
+                marker.color = ColorRGBA(255,255, 255, 1) 
+            elif (color == "Yellow"): 
+                marker.color = ColorRGBA(255, 255, 0, 1)
+
+            if (len(self.marker_array.markers) == 0 or exists == False): 
+                # create a marker for new face
+                print("nov")
+                self.marker_array.markers.append(marker)
+            else: 
+                # update the existing marker 
+                print("obstaja")
+                self.marker_array.markers[index].pose = pose
+
+            self.markers_pub.publish(self.marker_array)
+
+def callback(data, args):
+    print("Processing new cylinder")
+    marker = args
+
+    # create a pose with given coordinates
+    pose = Pose()
+    pose.position.x = data.face_x
+    pose.position.y = data.face_y
+    pose.position.z = data.face_z 
+    
+    exists = data.exists
+    index = data.index 
+    color = data.color
+
+    print(exists, index)
+
+    marker.drawMarkers(pose, exists, index, color)
+
+def main(): 
+    marker = Markers()
+    rospy.init_node('cylinder_detection_tester', anonymous=True)
+    rospy.Subscriber('Cylinder_detection_markers', CylinderDetectedMarker, callback, (marker));
+    rospy.spin()
+
+if __name__ == '__main__':
+    main()

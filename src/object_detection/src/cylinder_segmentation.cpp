@@ -155,7 +155,7 @@ void cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
   seg.setNormalDistanceWeight (0.1);
   seg.setMaxIterations (150);
   seg.setDistanceThreshold (0.01);
-  seg.setRadiusLimits (0.1, 0.2);
+  seg.setRadiusLimits (0.11, 0.13); // seg.setRadiusLimits (0.1, 0.2);
   seg.setInputCloud (cloud_filtered2);
   seg.setInputNormals (cloud_normals2);
 
@@ -228,52 +228,12 @@ void cloud_cb (const pcl::PCLPointCloud2ConstPtr& cloud_blob)
 
       std::cout << "Detected cylinder";
       publ.publish(msg);
-    
-
-      // TODO: test if effective solution to remove floor detection
-      // if (point_map.point.z >= 0.25) {
-        // if detected shape is higher than 0.25 cm - we get rid of the floor detection
-        // std::cout << "Detected cylinder";
-        // publ.publish(point_map, RGBHistogram_vec);
-      //}
-
-
-      /*marker.header.frame_id = "map";
-        marker.header.stamp = ros::Time::now();
-
-        marker.ns = "cylinder";
-        marker.id = 0;
-
-        marker.type = visualization_msgs::Marker::CYLINDER;
-        marker.action = visualization_msgs::Marker::ADD;
-
-        marker.pose.position.x = point_map.point.x;
-        marker.pose.position.y = point_map.point.y;
-        marker.pose.position.z = point_map.point.z;
-        marker.pose.orientation.x = 0.0;
-        marker.pose.orientation.y = 0.0;
-        marker.pose.orientation.z = 0.0;
-        marker.pose.orientation.w = 1.0;
-
-        marker.scale.x = 0.1;
-        marker.scale.y = 0.1;
-        marker.scale.z = 0.1;
-
-        marker.color.r=0.0f;
-        marker.color.g=1.0f;
-        marker.color.b=0.0f;
-        marker.color.a=1.0f;
-
-      marker.lifetime = ros::Duration();
-
-      pubm.publish (marker);*/
       
-      //if (msg.cylinder_z <= 0.65) {
+      if (msg.cylinder_z <= 0.65) {
           pcl::PCLPointCloud2 outcloud_cylinder;
           pcl::toPCLPointCloud2(*cloud_cylinder, outcloud_cylinder);
           puby.publish(outcloud_cylinder);
-      //}
-
+      }
   }
   
 }
