@@ -1,20 +1,10 @@
 #!/usr/bin/python3
 
-import sys
 import rospy
-import dlib
-import cv2
-import numpy as np
-import tf2_geometry_msgs
-import tf2_ros
-import math
-#import matplotlib.pyplot as plt
-from sensor_msgs.msg import Image
-from geometry_msgs.msg import PointStamped, Vector3, Pose
-from cv_bridge import CvBridge, CvBridgeError
+from geometry_msgs.msg import Vector3, Pose
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA 
-from face_detector.msg import FaceDetected, Detected
+from markers.msg import RingDetectedMarker
 
 class Markers: 
     def __init__(self):
@@ -24,9 +14,9 @@ class Markers:
         self.marker_num = 1 
 
         # Publiser for the visualization markers
-        self.markers_pub = rospy.Publisher('face_markers', MarkerArray, queue_size=1000) 
+        self.markers_pub = rospy.Publisher('ring_markers', MarkerArray, queue_size=1000) 
 
-    def drawMarkers(self, pose, exists, index):
+    def drawMarkers(self, pose, exists, index, color):
         if pose is not None:
             # Create a marker used for visualization 
             print("Position: ", pose)
@@ -35,13 +25,25 @@ class Markers:
             marker.header.stamp = rospy.Time(0)
             marker.header.frame_id = 'map'
             marker.pose = pose
-            marker.type = Marker.CUBE
+            marker.type = Marker.SPHERE
             marker.action = Marker.ADD
             marker.frame_locked = False
             marker.lifetime = rospy.Duration.from_sec(0)
             marker.id = self.marker_num 
-            marker.scale = Vector3(0.1, 0.1, 0.1)
-            marker.color = ColorRGBA(1, 1, 1, 1) 
+            marker.scale = Vector3(0.1, 0.1, 0.1) 
+
+            if (color == "Black"):
+                marker.color = ColorRGBA(0, 0, 0, 1) 
+            elif (color == "Blue"):
+                marker.color = ColorRGBA(0, 0, 255, 1) 
+            elif (color == "Green"): 
+                marker.color = ColorRGBA(0, 132, 0, 1) 
+            elif (color == "Red"): 
+                marker.color = ColorRGBA(164, 0, 0, 1) 
+            elif (color == "White"): 
+                marker.color = ColorRGBA(255, 255, 255, 1) 
+            elif (color == "Yellow"): 
+                marker.color = ColorRGBA(255, 255, 0, 1)
 
             if (len(self.marker_array.markers) == 0 or exists == False): 
                 # create a marker for new face
@@ -55,25 +57,25 @@ class Markers:
             self.markers_pub.publish(self.marker_array)
 
 def callback(data, args):
+    print("Processing new ring")
     marker = args
 
     # create a pose with given coordinates
     pose = Pose()
-    pose.position.x = data.face_x
-    pose.position.y = data.face_y
-    pose.position.z = data.face_z 
+    pose.position.x = data.ring_x
+    pose.position.y = data.ring_y
+    pose.position.z = data.ring_z 
     
     exists = data.exists
     index = data.index 
+    color = data.color
 
-    print(exists, index)
-
-    marker.drawMarkers(pose, exists, index)
+    marker.drawMarkers(pose, exists, index, color)
 
 def main(): 
     marker = Markers()
-    rospy.init_node('face_detection_tester', anonymous=True)
-    rospy.Subscriber('detection', Detected, callback, (marker));
+    rospy.init_node('ring_detection_tester', anonymous=True)
+    rospy.Subscriber('Ring_detected_markes', RingDetectedMarker, callback, (marker));
     rospy.spin()
 
 if __name__ == '__main__':

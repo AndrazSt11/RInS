@@ -3,27 +3,29 @@
 import sys
 import math
 import rospy
+import numpy as np 
 from enum import Enum 
 from time import sleep
+
+from sklearn import neural_network
+import joblib
+import pathlib
 
 from tf import transformations
 import tf2_geometry_msgs
 import tf2_ros
 
-from geometry_msgs.msg import PointStamped, Vector3, Pose, Point, Quaternion
-from face_detector.msg import FaceDetected, Detected, CylinderD 
-from object_detection.msg import RingDetected, DetectedR, CylinderDetected
-from std_msgs.msg import String
-# from object_detection.msg import Cylinder 
-from move_manager.mover import Mover
-import numpy as np 
-
 from sound_play.msg import SoundRequest
 from sound_play.libsoundplay import SoundClient
 
-from sklearn import neural_network
-import joblib
-import pathlib
+from move_manager.mover import Mover
+
+from geometry_msgs.msg import PointStamped, Vector3, Pose, Point, Quaternion
+from markers.msg import FaceDetectedMarker, CylinderDetectedMarker, RingDetectedMarker
+from face_detector.msg import FaceDetected
+from object_detection.msg import RingDetected, CylinderDetected
+from std_msgs.msg import String
+
 
 class State(Enum): 
     STATIONARY = 1
@@ -82,18 +84,17 @@ class MainNode:
             TaskType.FACE: [],
         }
 
-        # marker publishers
         self.marker_publishers = {
-            TaskType.RING: rospy.Publisher('detectionR', DetectedR, queue_size=10),
-            TaskType.CYLINDER: rospy.Publisher('detectionC', CylinderD, queue_size=10),
-            TaskType.FACE: rospy.Publisher('detection', Detected, queue_size=10),
+            TaskType.RING: rospy.Publisher('Ring_detected_markes', RingDetectedMarker, queue_size=10),
+            TaskType.CYLINDER: rospy.Publisher('Cylinder_detection_markers', CylinderDetectedMarker, queue_size=10),
+            TaskType.FACE: rospy.Publisher('Face_detected_markers', FaceDetectedMarker, queue_size=10),
         }
 
         self.mover = Mover()
         self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl") 
 
         # publisher for robot arm 
-        self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=1)
+        self.robot_arm = rospy.Publisher("/arm_command", String, queue_size=10)
 
         # All message passing nodes
         self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
@@ -289,11 +290,11 @@ class MainNode:
 
         # Check if we should update the task or create a new one
         if old_task:
-            self.update_task(old_task, new_task)
-
             # we don't want to repeat the same task
             if old_task.finished:
                 return
+
+            self.update_task(old_task, new_task)
 
             new_task = old_task
 

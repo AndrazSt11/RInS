@@ -130,7 +130,6 @@ def is_point_valid(x, y, image_data):
     
     return False
 
-
 def get_map_points(map_location):
     image = Image.open(map_location)
     image_data = asarray(image)

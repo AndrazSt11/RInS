@@ -33,7 +33,6 @@ add_message_files(DIRECTORY msg
   Cylinder.msg 
   CylinderDetected.msg
   RingDetected.msg 
-  DetectedR.msg
 )
 
 generate_messages(DEPENDENCIES std_msgs geometry_msgs)

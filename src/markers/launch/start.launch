@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="markers" type="face_markers" name="face_markers"  output="screen"/>
+  <node pkg="markers" type="cylinder_markers" name="cylinder_markers"  output="screen"/>
+  <node pkg="markers" type="ring_markers" name="ring_markers"  output="screen"/>
+</launch>
