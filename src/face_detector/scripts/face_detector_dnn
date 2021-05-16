@@ -35,6 +35,7 @@ class face_detector_dnn:
 
         # A help variable for holding the dimensions of the image
         self.dims = (0, 0, 0)
+        self.mask_variance_treshold = 100
 
         # Detection publisher
         self.detection_publisher = rospy.Publisher('face_detection', FaceDetected);
@@ -54,6 +55,39 @@ class face_detector_dnn:
     def register_images(self, rgb_message, depth_message):   
         self.rgb_message = rgb_message
         self.depth_message = depth_message
+
+    
+    def find_mask(self, face_region):
+        h = face_region.shape[0]
+        w = face_region.shape[1]
+
+        # Extract mask region
+        # TODO: test on given images!
+        y1 = int(h * 0.75)
+        y2 = int(h * 0.85)
+        x1 = int(w * 0.35)
+        x2 = int(w * 0.65)
+        mask_region = face_region[y1:y2, x1:x2]
+
+        # cv2.imshow("Image window", mask_region)
+        # cv2.waitKey(1)
+
+        # Compute variance
+        n = mask_region.shape[0] * mask_region.shape[1]
+        avg = np.sum(mask_region, axis=(0,1)) / n
+
+        variance = [0, 0, 0]
+        for y in range(0, mask_region.shape[0]):
+            for x in range(0, mask_region.shape[1]):
+                variance += np.power(mask_region[y, x] - avg, 2)
+        variance /= n
+        variance = np.sum(variance)
+        print("Variance:", variance)
+
+        if variance < self.mask_variance_treshold:
+            return True
+
+        return False
 
 
     def get_pose(self, coords, dist, stamp):
@@ -134,9 +168,6 @@ class face_detector_dnn:
                 box = box.astype('int')
                 x1, y1, x2, y2 = box[0], box[1], box[2], box[3]
 
-                # Extract region containing face
-                face_region = rgb_image[y1:y2, x1:x2]
-
                 # Find the distance to the detected face
                 face_distance = float(np.nanmean(depth_image[y1:y2,x1:x2]))
 
@@ -147,6 +178,13 @@ class face_detector_dnn:
 
                 # Find the location of the detected face
                 faceDetectionMsg = self.get_pose((x1,x2,y1,y2), face_distance, depth_time)
+
+                # Determine if face has a mask
+                face_region = rgb_image[y1:y2, x1:x2]
+                wears_mask = self.find_mask(face_region);
+                print("Wears mask?", wears_mask)
+
+                faceDetectionMsg.wears_mask = wears_mask
                 self.detection_publisher.publish(faceDetectionMsg)
 
 def main():

@@ -1,5 +1,6 @@
 #!/usr/bin/python3 
 
+from pickle import FALSE
 import sys
 import math
 import rospy
@@ -41,7 +42,7 @@ class TaskType(Enum):
 
 
 class Task: 
-    def __init__(self, type, id, x, y, z, norm_x, norm_y, color=False):
+    def __init__(self, type, id, x, y, z, norm_x, norm_y, color=False, wears_mask=False):
         self.id = id
         self.type = type
 
@@ -50,6 +51,7 @@ class Task:
         self.z = z 
 
         self.color = color
+        self.wears_mask = wears_mask
 
         self.norm_x = norm_x 
         self.norm_y = norm_y 
@@ -102,7 +104,7 @@ class MainNode:
         self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection) 
         
         # soundhandle
-        # self.soundhandle = SoundClient()
+        self.soundhandle = SoundClient()
 
 
     # this runs before every execute
@@ -167,8 +169,8 @@ class MainNode:
                         self.mover.move_to(point, quat, force_reach=False)
 
 
-        if self.state == State.EXPLORE:
-            self.mover.follow_path()
+        # if self.state == State.EXPLORE:
+        #     # self.mover.follow_path()
         
 
         if self.state == State.FINISH: 
@@ -272,11 +274,14 @@ class MainNode:
         old.norm_x = updated_normal[0]
         old.norm_y = updated_normal[1]
 
+        # update mask detection
+        old.wears_mask = old.wears_mask or new.wears_mask
+
         # upadte marker
         self.publish_task_marker(old, exists=True)
 
 
-    def add_task(self, type, x, y, z, color):
+    def add_task(self, type, x, y, z, color, wears_mask):
         # Computue face normal
         robot_pose = self.mover.get_pose()
         rp_np = np.array([robot_pose.position.x, robot_pose.position.y])
@@ -285,7 +290,7 @@ class MainNode:
         normal = rp_np - tp_np
         normal = normal / np.linalg.norm(normal)
 
-        new_task = Task(type, len(self.history[type]), x, y, z, normal[0], normal[1], color)
+        new_task = Task(type, len(self.history[type]), x, y, z, normal[0], normal[1], color, wears_mask)
         old_task = self.task_exists_history(new_task)
 
         # Check if we should update the task or create a new one
@@ -314,15 +319,44 @@ class MainNode:
     #-------------------------- CALLBACKS -----------------------------
     # FACES
     def on_face_detection(self, data):
-        self.add_task(TaskType.FACE, data.world_x, data.world_y, data.world_z, False)
+        self.add_task(TaskType.FACE, data.world_x, data.world_y, data.world_z, False, data.wears_mask)
 
     def on_face_reached(self):
-        voice = 'voice_kal_diphone'
         volume = 2.0
-        s = "Hello human, how are you today?"
+        voice = 'voice_kal_diphone'
 
-        #self.soundhandle.say(s, voice, volume)
+        # TODO:
+        # 1) Greet
+        # 2) If it does not wear mask -> warn
+        # 3) Check it's social distance
+        # 4) Get info (by talking or QR code)
+        # 5) Start task of bringing him medicine
+        
+
+        # Greet
         rospy.loginfo(f"Greeting face - {self.current_task.id}")
+        s = "Hello human!"
+        self.soundhandle.say(s, voice, volume)
+
+        # Check if it wears mask
+        rospy.loginfo(f"Wears mask? - {self.current_task.wears_mask}")
+        if(self.current_task.wears_mask == False):
+            s = "Please put on your mask!"
+            self.soundhandle.say(s, voice, volume)
+
+        # Check social distancing
+        social_distancing_list = self.is_social_distancing(self.current_task)
+        print(social_distancing_list)
+        is_social_distancing = len(social_distancing_list) == 0
+        
+        rospy.loginfo(f"Follows social distancing? - {is_social_distancing}")
+        if(not is_social_distancing):
+            s = "Please keep social distance!"
+            self.soundhandle.say(s, voice, volume)
+
+        # TODO: add task to go warn other faces
+
+
         self.current_task.finished = True
         rospy.sleep(1)
 
@@ -334,7 +368,7 @@ class MainNode:
             rospy.logwarn(f"Cylinder detection: false-positive color={color}")
             return
 
-        self.add_task(TaskType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, color)
+        self.add_task(TaskType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, color, False)
     
     def on_cylinder_reached(self): 
     
@@ -359,7 +393,7 @@ class MainNode:
             rospy.logwarn(f"Ring detection: false-positive color={data.color}")
             return
 
-        self.add_task(TaskType.RING, data.ring_x, data.ring_y, data.ring_z, data.color)
+        self.add_task(TaskType.RING, data.ring_x, data.ring_y, data.ring_z, data.color, False)
 
     def on_ring_reached(self):
         soundhandle = SoundClient()
@@ -401,18 +435,18 @@ class MainNode:
         return qx, qy, qz, qw
 
 
-    def get_quaternions(self, fi): 
-        # q1 = math.cos(fi/2)
-        # q2 = 0
-        # q3 = 0 
-        # q4 = math.sin(fi/2)
+    # def get_quaternions(self, fi): 
+    #     # q1 = math.cos(fi/2)
+    #     # q2 = 0
+    #     # q3 = 0 
+    #     # q4 = math.sin(fi/2)
 
-        q1 = 0
-        q2 = 0
-        q3 = 0 
-        q4 = 1
+    #     q1 = 0
+    #     q2 = 0
+    #     q3 = 0 
+    #     q4 = 1
         
-        return q1, q2, q3, q4
+    #     return q1, q2, q3, q4
 
 
     def get_color_label(self, num):
@@ -440,6 +474,16 @@ class MainNode:
                         return temp
         
         return False
+
+    # TODO: take normals into account
+    def is_social_distancing(self, current_task):
+        social_dist_id = []
+        for face_task in self.history[TaskType.FACE]:
+            distance = math.sqrt((current_task.x - face_task.x)**2 + (current_task.y - face_task.y)**2) 
+            if((distance < 1.0) and (current_task.id != face_task.id)):
+                social_dist_id.append(face_task.id)
+
+        return social_dist_id;
 
 
 def main():
