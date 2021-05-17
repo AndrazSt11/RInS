@@ -5,7 +5,7 @@ import sys
 import math
 import rospy
 import numpy as np 
-from enum import Enum 
+from enum import Enum, IntEnum 
 from time import sleep
 
 from sklearn import neural_network
@@ -32,17 +32,45 @@ class State(Enum):
     STATIONARY = 1
     EXPLORE = 2
     APPROACH = 3
-    BUSY = 5
-    FINISH = 6
+    BUSY = 4
+    FINISH = 5
 
 class TaskType(Enum):
+    FACE_PROCESS = 1
+    SOCIAL_DIST_WARN = 2
+
+class FaceProcessState(IntEnum):
+    DETECTED = 1
+    FACE_CONVERSATOIN = 2
+    CLINIC_CONVERSATOIN = 3
+    PICK_UP_VACCINE = 4
+    DELIVER_VACCINE = 5
+    VACCINE_SEARCH = 6
+    CLINIC_SEARCH = 7
+    FINISHED = 8
+
+class ObjectType(Enum):
     FACE = 1
     CYLINDER = 2
     RING = 3
 
+class ObjProperty(Enum):
+    UNKNOWN = 1
+    FALSE = 2
+    TRUE = 3
 
-class Task: 
-    def __init__(self, type, id, x, y, z, norm_x, norm_y, color=False, wears_mask=False):
+class Color(Enum):
+    UNKNOWN = 1
+    BLACK = 2
+    BLUE = 3
+    GREEN = 4
+    RED = 5
+    WHITE = 6
+    YELLOW = 7
+
+
+class Object:
+    def __init__(self, id, type, x, y, z, norm_x, norm_y):
         self.id = id
         self.type = type
 
@@ -50,17 +78,55 @@ class Task:
         self.y = y 
         self.z = z 
 
-        self.color = color
-        self.wears_mask = wears_mask
-
         self.norm_x = norm_x 
         self.norm_y = norm_y 
 
         self.num_of_detections = 1 
         self.update_greet_index = 1
 
+class FaceObj(Object):
+    def __init__(self, id, x, y, z, norm_x, norm_y, wears_mask):
+        Object.__init__(self, id, ObjectType.FACE, x, y, z, norm_x, norm_y)
+        self.wears_mask = wears_mask
+        self.is_vaccinated = ObjProperty.UNKNOWN
+        self.physical_exercise = -1
+        self.doctor = Color.UNKNOWN
+        self.suitable_vaccine = Color.UNKNOWN
+
+class RingObj(Object):
+    def __init__(self, id, x, y, z, norm_x, norm_y, color):
+        Object.__init__(self, id, ObjectType.RING, x, y, z, norm_x, norm_y)
+        self.color = color
+
+class CylinderObj(Object):
+    def __init__(self, id, x, y, z, norm_x, norm_y, color):
+        Object.__init__(self, id, ObjectType.CYLINDER, x, y, z, norm_x, norm_y)
+        self.color = color
+        # TODO: add data from QR detection
+
+
+
+class Task: 
+    def __init__(self, id, type):
+        self.id = id
+        self.type = type
+
         self.finished = False
         self.aborted = False
+
+class FaceProcess(Task):
+    def __init__(self, id, person_id):
+        Task.__init__(self, id, TaskType.FACE_PROCESS)
+        self.state = FaceProcessState.DETECTED
+        self.person_id = person_id
+        self.cylinder_id = -1
+        self.ring_id = -1
+
+class SocialDistWarn(Task):
+    def __init__(self, id, person_id):
+        Task.__init__(self, id, TaskType.SOCIAL_DIST_WARN)
+        self.person_id = person_id
+
 
 
 class MainNode:
@@ -68,28 +134,29 @@ class MainNode:
         self.state = State.STATIONARY
         rospy.init_node('main_node', anonymous=True)
 
-        # Task queue (points to visit)
+        # Pending tasks
+        self.taskId = 0
         self.tasks = []
         self.current_task = False
 
-        # How many times we detect an object before we queue task
+        # How many times we detect an object before we add it to objects
         self.min_detections = {
-            TaskType.RING: 1,
-            TaskType.CYLINDER: 1,
-            TaskType.FACE: 1,
+            ObjectType.RING: 1,
+            ObjectType.CYLINDER: 1,
+            ObjectType.FACE: 1,
         }
 
-        # Data about previous tasks (current and pending are also included)
-        self.history = {
-            TaskType.RING: [],
-            TaskType.CYLINDER: [],
-            TaskType.FACE: [],
+        # Data about all detected objects
+        self.objects = {
+            ObjectType.RING: [],
+            ObjectType.CYLINDER: [],
+            ObjectType.FACE: [],
         }
 
         self.marker_publishers = {
-            TaskType.RING: rospy.Publisher('Ring_detected_markes', RingDetectedMarker, queue_size=10),
-            TaskType.CYLINDER: rospy.Publisher('Cylinder_detection_markers', CylinderDetectedMarker, queue_size=10),
-            TaskType.FACE: rospy.Publisher('Face_detected_markers', FaceDetectedMarker, queue_size=10),
+            ObjectType.RING: rospy.Publisher('Ring_detected_markes', RingDetectedMarker, queue_size=10),
+            ObjectType.CYLINDER: rospy.Publisher('Cylinder_detection_markers', CylinderDetectedMarker, queue_size=10),
+            ObjectType.FACE: rospy.Publisher('Face_detected_markers', FaceDetectedMarker, queue_size=10),
         }
 
         self.mover = Mover()
@@ -107,15 +174,17 @@ class MainNode:
         self.soundhandle = SoundClient()
 
 
-    # this runs before every execute
     def before_execute(self):
+        # print(self.tasks)
+        # print(self.objects)
+
         if self.current_task:
-            if not self.current_task.finished and not self.current_task.aborted:
+            if self.is_task_active(self.current_task):
                 return
         
-        self.current_task = self.get_next_task()
+        self.current_task = self.get_available_task()
         if self.current_task:
-            rospy.loginfo(f"GETTING NEW TASK: type={self.current_task.type} color={self.current_task.color}")
+            rospy.loginfo(f"GETTING NEW TASK: type={self.current_task.type}")
 
 
     # Act based on current state
@@ -136,120 +205,176 @@ class MainNode:
                 self.state = State.BUSY
                 self.mover.move_to(point, quat, force_reach=False)
             else:
-                self.abort_task(self.current_task)
+                # self.abort_task(self.current_task)
+                self.tasks.remove(self.current_task) # TODO: better abortion of task!
                 self.state = State.STATIONARY
 
 
         if self.state == State.BUSY:
             if not self.mover.traveling:
                 if self.current_task:
-                    if self.current_task.type == TaskType.RING:
-                        self.on_ring_reached()
 
-                    elif self.current_task.type == TaskType.CYLINDER:
-                        self.on_cylinder_reached()
+                    if self.current_task.type == TaskType.FACE_PROCESS:
+                        self.current_task.state += 1
 
-                    elif self.current_task.type == TaskType.FACE:
-                        self.on_face_reached()
+                        if self.current_task.state == FaceProcessState.FACE_CONVERSATOIN:
+                            self.on_face_conversation()
 
-                    self.remove_finished_task()
+                        if self.current_task.state == FaceProcessState.CLINIC_CONVERSATOIN:
+                            self.on_clinic_conversation()
+
+                        if self.current_task.state == FaceProcessState.PICK_UP_VACCINE:
+                            self.on_vaccine_pick_up()
+
+                        if self.current_task.state == FaceProcessState.DELIVER_VACCINE:
+                            self.on_deliver_vaccine()
+
+
+                    elif self.current_task.type == TaskType.SOCIAL_DIST_WARN:
+                        self.on_social_dist_warn_reached()
+
                 else:
                     rospy.logwarn("No task in BUSY state?")
 
                 self.state = State.STATIONARY
             
             elif self.current_task: # NOTE: avoiding bool error
-                if self.current_task.num_of_detections > self.current_task.update_greet_index * 2:
-                    self.current_task.update_greet_index += 1
-
-                    success, point, quat = self.get_task_point(self.current_task)
-                    if success:
-                        print("Updated greet position")
-                        self.mover.stop_robot()
-                        self.mover.move_to(point, quat, force_reach=False)
+                self.update_greet_position(self.current_task)
 
 
-        # if self.state == State.EXPLORE:
-        #     # self.mover.follow_path()
-        
+        if self.state == State.EXPLORE:
+            self.mover.follow_path()
+
 
         if self.state == State.FINISH: 
             rospy.loginfo("Robot finished all tasks")
 
-        #rospy.loginfo(f"MAIN STATE: {self.state}")
 
-    #--------------------- TASK HANDLERS ------------------------
+    def update_greet_position(self, task):
+        object = self.get_object(task)
+        if not object: 
+            return 
 
+        if object.num_of_detections > object.update_greet_index * 2:
+            object.update_greet_index += 1
+
+            success, point, quat = self.get_task_point(task)
+            if success:
+                print("Updated greet position")
+                self.mover.stop_robot()
+                self.mover.move_to(point, quat, force_reach=False)
+
+
+    #------------------------ TASK HANDLING ---------------------------
+    def get_object(self, task):
+        # Get correct object
+        if task.type == TaskType.SOCIAL_DIST_WARN:
+            return self.objects[ObjectType.FACE][task.person_id]
+
+        elif task.type == TaskType.FACE_PROCESS:
+            if task.state == FaceProcessState.DETECTED:
+                return self.objects[ObjectType.FACE][task.person_id]
+
+            elif task.state == FaceProcessState.FACE_CONVERSATOIN:
+                return self.objects[ObjectType.CYLINDER][task.cylinder_id]
+
+            elif task.state == FaceProcessState.CLINIC_CONVERSATOIN:
+                return self.objects[ObjectType.RING][task.ring_id]
+
+            elif task.state == FaceProcessState.PICK_UP_VACCINE:
+                return self.objects[ObjectType.FACE][task.person_id]
+
+        return False
 
     def get_task_point(self, task):
+        object = self.get_object(task)
+        if not object: 
+            return False, None, None      
+
         robot_pose = self.mover.get_pose()
 
-        # travel distance
-        travel_distance = math.sqrt((task.x - robot_pose.position.x)**2 + (task.y - robot_pose.position.y)**2)
 
+        travel_distance = math.sqrt((object.x - robot_pose.position.x)**2 + (object.y - robot_pose.position.y)**2)
 
-        fi1 = math.atan2(task.y - robot_pose.position.y, task.x - robot_pose.position.x)
+        fi1 = math.atan2(object.y - robot_pose.position.y, object.x - robot_pose.position.x)
         initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi1), robot_pose.position.y + travel_distance * math.sin(fi1), 0.0)
 
         point = self.get_valid_point_near(initial_point)
         if not point:
-            rospy.logwarn(f"Couldn't find a valid point. Aborting task: id={task.id}")
+            rospy.logwarn(f"Couldn't find a valid point. Aborting task: id={object.id}")
             return False, None, None
 
         # Orient to object
-        fi = math.atan2(task.y - point.y, task.x - point.x)
+        fi = math.atan2(object.y - point.y, object.x - point.x)
         quat = transformations.quaternion_from_euler(0, 0, fi)
 
         return True, point, Quaternion(0, 0, quat[2], quat[3])
 
+    def is_task_active(self, task):
+        if task.finished or task.aborted:
+            self.tasks.remove(task)
+            return False
 
-    def get_next_task(self):
-        if len(self.tasks) > 0:
-            return self.tasks[0]
-        
+        if task.type == TaskType.FACE_PROCESS:
+            if task.state == FaceProcessState.CLINIC_SEARCH or task.state == FaceProcessState.VACCINE_SEARCH:
+                return False
+
+        return True
+
+    def get_available_task(self):
+        for task in self.tasks:
+            if task.type == TaskType.SOCIAL_DIST_WARN:
+                if self.is_task_active(task): return task
+
+            if task.type == TaskType.FACE_PROCESS:
+                if int(task.state) < 6: return task # Task can be treated (we have necessary information)
+                            
         return False
 
-    def remove_finished_task(self):
-        if len(self.tasks) > 0:
-            self.tasks.pop(0)
+    def update_tasks(self, object):
+        for task in self.tasks:
+            if task.type == TaskType.FACE_PROCESS:
+                person = self.objects[ObjectType.FACE][task.person_id]
+                if task.state == FaceProcessState.CLINIC_SEARCH and object.type == ObjectType.CYLINDER and person.doctor_color == object.color:
+                    task.cylinder_id = object.id
+                    task.state = FaceProcessState.CLINIC_CONVERSATOIN
+                
+                if task.state == FaceProcessState.VACCINE_SEARCH and object.type == ObjectType.RING and person.suitable_vaccine == object.color:
+                    task.ring_id = object.id
+                    task.state = FaceProcessState.PICK_UP_VACCINE
 
 
-    def abort_task(self, task):
-        rospy.logwarn(f"Aborting task: id={task.id} type={task.type}")
-        task.aborted = True
-
-        # Remove from queue
-        self.tasks.pop(0)
-        # self.remove_from_history(task)
-
-        self.state = State.STATIONARY
-
-
-    def publish_task_marker(self, task, exists):
-        publisher = self.marker_publishers[task.type]
+    #----------------------- OBJECT HANDLING --------------------------
+    def publish_object_marker(self, object, exists):
+        publisher = self.marker_publishers[object.type]
         if publisher:
-            if task.type == TaskType.FACE:
-                publisher.publish(task.x, task.y, task.z, exists, task.id)
+            if object.type == ObjectType.FACE:
+                publisher.publish(object.x, object.y, object.z, exists, object.id)
             else:
-                publisher.publish(task.x, task.y, task.z, task.color, exists, task.id)
+                publisher.publish(object.x, object.y, object.z, self.get_color_string(object.color), exists, object.id)
 
-    
-    def task_exists_history(self, task):
+
+    def object_exists(self, object):
         # Checks if already exists
-        for old_task in self.history[task.type]:    
+        for old_object in self.objects[object.type]:    
             # Check normal and distance
-            normal_compare = old_task.norm_x * task.norm_x + old_task.norm_y * task.norm_y
-            d = math.sqrt((old_task.x - task.x)**2 + (old_task.y - task.y)**2 + (old_task.z - task.z)**2) 
+            normal_compare = old_object.norm_x * object.norm_x + old_object.norm_y * object.norm_y
+            dist = math.sqrt((old_object.x - object.x)**2 + (old_object.y - object.y)**2 + (old_object.z - object.z)**2) 
 
             # Compare normals only for faces
-            if task.type == TaskType.FACE and normal_compare < 0.06: 
+            if object.type == ObjectType.FACE and normal_compare < 0.06: 
                 continue
 
-            # Task exists if correct distance away and same color
-            if d < 1.4 and task.color == old_task.color:
-                return old_task
+            # Compare colors only for rings and cylinders
+            if (object.type == ObjectType.RING or object.type == ObjectType.CYLINDER) and object.color != old_object.color: 
+                continue
 
-    def update_task(self, old, new):
+            # Object exists if correct distance 
+            if dist < 1.4 :
+                return old_object
+
+
+    def update_object(self, old, new):
         # update detecion num
         old.num_of_detections += 1
 
@@ -275,14 +400,15 @@ class MainNode:
         old.norm_y = updated_normal[1]
 
         # update mask detection
-        old.wears_mask = old.wears_mask or new.wears_mask
+        if old.type == ObjectType.FACE:
+            old.wears_mask = old.wears_mask or new.wears_mask
 
         # upadte marker
-        self.publish_task_marker(old, exists=True)
+        self.publish_object_marker(old, exists=True)
 
-
-    def add_task(self, type, x, y, z, color, wears_mask):
-        # Computue face normal
+            
+    def add_object(self, type, x, y, z, color, wears_mask):
+        # Computue normal
         robot_pose = self.mover.get_pose()
         rp_np = np.array([robot_pose.position.x, robot_pose.position.y])
 
@@ -290,125 +416,112 @@ class MainNode:
         normal = rp_np - tp_np
         normal = normal / np.linalg.norm(normal)
 
-        new_task = Task(type, len(self.history[type]), x, y, z, normal[0], normal[1], color, wears_mask)
-        old_task = self.task_exists_history(new_task)
+        # Create task
+        if type == ObjectType.FACE:
+            new_object = FaceObj(len(self.objects[type]), x, y, z, normal[0], normal[1], wears_mask)
+        elif type == ObjectType.CYLINDER:
+            new_object = CylinderObj(len(self.objects[type]), x, y, z, normal[0], normal[1], color)
+        elif type == ObjectType.RING:
+            new_object = RingObj(len(self.objects[type]), x, y, z, normal[0], normal[1], color)
+
+        old_object = self.object_exists(new_object)
 
         # Check if we should update the task or create a new one
-        if old_task:
-            # we don't want to repeat the same task
-            if old_task.finished:
-                return
-
-            self.update_task(old_task, new_task)
-
-            new_task = old_task
+        if old_object:
+            self.update_object(old_object, new_object)
+            new_object = old_object
 
         else:
-            # add to history
-            self.history[type].append(new_task)
+            self.objects[type].append(new_object)
+            
+            if new_object.type == ObjectType.FACE:
+                self.tasks.append(FaceProcess(self.taskId, new_object.id))
+                self.taskId += 1
+            else:
+                self.update_tasks(new_object)
 
-            # upadte marker
-            self.publish_task_marker(new_task, exists=False)
+            # update marker
+            self.publish_object_marker(new_object, exists=False)
 
-        # lets check if we need to queue it
-        if (new_task.num_of_detections >= self.min_detections[type]) and (not new_task in self.tasks):
-            print("New task added:", new_task.type, new_task.color)
-            self.tasks.append(new_task)
 
+        # TODO: add pending object list, which have not reached detection limit
+        # # lets check if we need to queue it
+        # if (new_task.num_of_detections >= self.min_detections[type]) and (not new_task in self.tasks):
+        #     print("New task added:", new_task.type, new_task.color)
+        #     self.tasks.append(new_task)
+    
 
     #-------------------------- CALLBACKS -----------------------------
-    # FACES
     def on_face_detection(self, data):
-        self.add_task(TaskType.FACE, data.world_x, data.world_y, data.world_z, False, data.wears_mask)
+        self.add_object(ObjectType.FACE, data.world_x, data.world_y, data.world_z, False, self.get_obj_property_enum(data.wears_mask))
 
-    def on_face_reached(self):
-        volume = 2.0
-        voice = 'voice_kal_diphone'
-
-        # TODO:
-        # 1) Greet
-        # 2) If it does not wear mask -> warn
-        # 3) Check it's social distance
-        # 4) Get info (by talking or QR code)
-        # 5) Start task of bringing him medicine
-        
-
-        # Greet
-        rospy.loginfo(f"Greeting face - {self.current_task.id}")
-        s = "Hello human!"
-        self.soundhandle.say(s, voice, volume)
-
-        # Check if it wears mask
-        rospy.loginfo(f"Wears mask? - {self.current_task.wears_mask}")
-        if(self.current_task.wears_mask == False):
-            s = "Please put on your mask!"
-            self.soundhandle.say(s, voice, volume)
-
-        # Check social distancing
-        social_distancing_list = self.is_social_distancing(self.current_task)
-        print(social_distancing_list)
-        is_social_distancing = len(social_distancing_list) == 0
-        
-        rospy.loginfo(f"Follows social distancing? - {is_social_distancing}")
-        if(not is_social_distancing):
-            s = "Please keep social distance!"
-            self.soundhandle.say(s, voice, volume)
-
-        # TODO: add task to go warn other faces
-
-
-        self.current_task.finished = True
-        rospy.sleep(1)
-
-
-    # CYLINDERS
     def on_cylinder_detection(self, data): 
         color = self.get_color_label(self.mlpClf.predict([data.colorHistogram]))
         if (color == "White") or (color == "Black"):
             rospy.logwarn(f"Cylinder detection: false-positive color={color}")
             return
 
-        self.add_task(TaskType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, color, False)
-    
-    def on_cylinder_reached(self): 
-    
-        soundhandle = SoundClient() 
-        voice = 'voice_kal_diphone'
-        volume = 5.0 
-        s = "Color of the cylinder is: " + self.current_task.color
-        
-        rospy.sleep(1)
-        rospy.loginfo(f"Greeting cylinder - {self.current_task.id}, color: {self.current_task.color}") 
-        soundhandle.say(s, voice, volume)
-        self.robot_arm.publish("extend")
-        rospy.sleep(1) 
-        self.robot_arm.publish("retract")
-        self.current_task.finished = True
-        rospy.sleep(1)
+        self.add_object(ObjectType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, self.get_color_enum(color), False)
 
-
-    # RINGS
     def on_ring_detection(self, data):
         if data.color == "White":
             rospy.logwarn(f"Ring detection: false-positive color={data.color}")
             return
 
-        self.add_task(TaskType.RING, data.ring_x, data.ring_y, data.ring_z, data.color, False)
+        self.add_object(ObjectType.RING, data.ring_x, data.ring_y, data.ring_z, self.get_color_enum(data.color), False)
 
-    def on_ring_reached(self):
-        soundhandle = SoundClient()
+    def on_face_conversation(self):
+        volume = 2.0
         voice = 'voice_kal_diphone'
-        volume = 5.0 
-        s = "Color of the ring is: " + self.current_task.color
-    
-        rospy.loginfo(f"Greeting ring - id: {self.current_task.id}, color: {self.current_task.color}")
-        rospy.sleep(1)
-        soundhandle.say(s, voice, volume)
-        self.current_task.finished = True
-        rospy.sleep(1)
-    
 
-    #---------------------------- HELPERS ---------------------------
+        person = self.objects[ObjectType.FACE][self.current_task.person_id]
+        
+        # Greet
+        rospy.loginfo(f"Greeting face - {self.current_task.person_id}")
+        s = "Hello human!"
+        self.soundhandle.say(s, voice, volume)
+
+        # Check if it wears mask
+        rospy.loginfo(f"Wears mask? - {person.wears_mask}")
+        if(person.wears_mask == False):
+            s = "Please put on your mask!"
+            self.soundhandle.say(s, voice, volume)
+
+        # Check social distancing
+        social_distancing_list = self.is_social_distancing(person)
+        print("Social dist list:", social_distancing_list)
+        
+        is_social_distancing = len(social_distancing_list) == 0
+        rospy.loginfo(f"Follows social distancing? - {is_social_distancing}")
+        if(not is_social_distancing):
+            s = "Please keep social distance!"
+            self.soundhandle.say(s, voice, volume)
+
+        # TODO: add task to go warn other faces
+        
+        # Get info (QR code or by speach)
+
+        # Check for suitable clinic
+        clinic_list = self.objects[ObjectType.CYLINDER]
+        for i in range(0, len(clinic_list)):
+            if clinic_list[i].color == person.doctor:
+                self.current_task.cylinder_id = i
+                break 
+
+        if self.current_task.cylinder_id == -1: # No suitable clinc found
+            self.current_task.state = FaceProcessState.CLINIC_SEARCH
+        
+
+    def on_clinic_conversation(self):
+        return
+
+    def on_vaccine_pick_up(self):
+        return 
+
+    def on_deliver_vaccine(self):
+        return
+
+#---------------------------- HELPERS ---------------------------
     def euler_from_quaternion(self, x, y, z, w): 
         t0 = +2.0 * (w * x + y * z)
         t1 = +1.0 - 2.0 * (x * x + y * y)
@@ -425,7 +538,6 @@ class MainNode:
 
         return roll_x, pitch_y, yaw_z 
 
-
     def euler_to_quaternion(self, roll, pitch, yaw):
         qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
         qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
@@ -433,21 +545,6 @@ class MainNode:
         qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
 
         return qx, qy, qz, qw
-
-
-    # def get_quaternions(self, fi): 
-    #     # q1 = math.cos(fi/2)
-    #     # q2 = 0
-    #     # q3 = 0 
-    #     # q4 = math.sin(fi/2)
-
-    #     q1 = 0
-    #     q2 = 0
-    #     q3 = 0 
-    #     q4 = 1
-        
-    #     return q1, q2, q3, q4
-
 
     def get_color_label(self, num):
         if num == 0:
@@ -463,6 +560,39 @@ class MainNode:
         elif num == 5:
             return "Yellow"
 
+    def get_color_enum(self, color):
+        if color == "Black":
+            return Color.BLACK
+        elif color == "Blue":
+            return Color.BLUE
+        elif color == "Green":
+            return Color.GREEN
+        elif color == "Red":
+            return Color.RED
+        elif color == "White":
+            return Color.WHITE
+        elif color == "Yellow":
+            return Color.YELLOW
+
+    def get_color_string(self, color_enum):
+        if color_enum == Color.BLACK:
+            return "Black"
+        elif color_enum == Color.BLUE:
+            return "Blue"
+        elif color_enum == Color.GREEN:
+            return "Green"
+        elif color_enum == Color.RED:
+            return "Red"
+        elif color_enum == Color.WHITE:
+            return "White"
+        elif color_enum == Color.YELLOW:
+            return "Yellow"
+            
+    def get_obj_property_enum(self, prop):
+        if prop:
+            return ObjProperty.TRUE
+        
+        return ObjProperty.FALSE
 
     def get_valid_point_near(self, point):
         # Try with different offsets
@@ -475,13 +605,13 @@ class MainNode:
         
         return False
 
-    # TODO: take normals into account
-    def is_social_distancing(self, current_task):
+    # # TODO: take normals into account
+    def is_social_distancing(self, current_person):
         social_dist_id = []
-        for face_task in self.history[TaskType.FACE]:
-            distance = math.sqrt((current_task.x - face_task.x)**2 + (current_task.y - face_task.y)**2) 
-            if((distance < 1.0) and (current_task.id != face_task.id)):
-                social_dist_id.append(face_task.id)
+        for person in self.objects[ObjectType.FACE]:
+            distance = math.sqrt((current_person.x - person.x)**2 + (current_person.y - person.y)**2) 
+            if((distance < 1.0) and (current_person.id != person.id)):
+                social_dist_id.append(person.id)
 
         return social_dist_id;
 
