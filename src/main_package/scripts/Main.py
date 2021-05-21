@@ -25,7 +25,9 @@ from geometry_msgs.msg import PointStamped, Vector3, Pose, Point, Quaternion
 from markers.msg import FaceDetectedMarker, CylinderDetectedMarker, RingDetectedMarker
 from face_detector.msg import FaceDetected
 from object_detection.msg import RingDetected, CylinderDetected
-from std_msgs.msg import String
+from std_msgs.msg import String 
+from data_viewer.msg import Data 
+from data_viewer.msg import Detected_number
 
 
 class State(Enum): 
@@ -91,7 +93,8 @@ class FaceObj(Object):
         self.is_vaccinated = ObjProperty.UNKNOWN
         self.physical_exercise = -1
         self.doctor = Color.UNKNOWN
-        self.suitable_vaccine = Color.UNKNOWN
+        self.suitable_vaccine = Color.UNKNOWN 
+        self.age = -1 
 
 class RingObj(Object):
     def __init__(self, id, x, y, z, norm_x, norm_y, color):
@@ -157,7 +160,13 @@ class MainNode:
             ObjectType.RING: rospy.Publisher('Ring_detected_markes', RingDetectedMarker, queue_size=10),
             ObjectType.CYLINDER: rospy.Publisher('Cylinder_detection_markers', CylinderDetectedMarker, queue_size=10),
             ObjectType.FACE: rospy.Publisher('Face_detected_markers', FaceDetectedMarker, queue_size=10),
-        }
+        } 
+        
+        # age of current person 
+        self.current_age = 0 
+        
+        # data of current person 
+        self.current_data = ""
 
         self.mover = Mover()
         self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl") 
@@ -169,6 +178,8 @@ class MainNode:
         self.face_detection_subsriber = rospy.Subscriber('face_detection', FaceDetected, self.on_face_detection)
         self.cylinder_detection_subsriber = rospy.Subscriber('/cylinderDetection', CylinderDetected, self.on_cylinder_detection)
         self.ring_detection_subsriber = rospy.Subscriber('ring_detection', RingDetected, self.on_ring_detection) 
+        self.qr_detection_subsriber = rospy.Subscriber('qr_detection', Data, self.on_qr_detected) 
+        self.num_detection_subsriber = rospy.Subscriber('num_detection', Detected_number, self.on_num_detected)
         
         # soundhandle
         self.soundhandle = SoundClient()
@@ -335,7 +346,7 @@ class MainNode:
         for task in self.tasks:
             if task.type == TaskType.FACE_PROCESS:
                 person = self.objects[ObjectType.FACE][task.person_id]
-                if task.state == FaceProcessState.CLINIC_SEARCH and object.type == ObjectType.CYLINDER and person.doctor_color == object.color:
+                if task.state == FaceProcessState.CLINIC_SEARCH and object.type == ObjectType.CYLINDER and person.doctor == object.color:
                     task.cylinder_id = object.id
                     task.state = FaceProcessState.CLINIC_CONVERSATOIN
                 
@@ -479,12 +490,14 @@ class MainNode:
         # Greet
         rospy.loginfo(f"Greeting face - {self.current_task.person_id}")
         s = "Hello human!"
+        rospy.sleep(2)
         self.soundhandle.say(s, voice, volume)
 
         # Check if it wears mask
         rospy.loginfo(f"Wears mask? - {person.wears_mask}")
         if(person.wears_mask == False):
             s = "Please put on your mask!"
+            rospy.sleep(2)
             self.soundhandle.say(s, voice, volume)
 
         # Check social distancing
@@ -494,12 +507,29 @@ class MainNode:
         is_social_distancing = len(social_distancing_list) == 0
         rospy.loginfo(f"Follows social distancing? - {is_social_distancing}")
         if(not is_social_distancing):
-            s = "Please keep social distance!"
-            self.soundhandle.say(s, voice, volume)
+            s = "Please keep social distance!" 
+            rospy.sleep(2)
+            self.soundhandle.say(s, voice, volume) 
+            
+        # age of current face(person)
+        self.objects[ObjectType.FACE][self.current_task.person_id].age = self.current_age
 
         # TODO: add task to go warn other faces
         
-        # Get info (QR code or by speach)
+        # Get info (QR code or by speach) 
+        # data of current face is stored in self.current_data --> add to the face_object   
+        
+        print(self.current_data)
+          
+        usr_data = self.current_data.split(",") 
+        
+        self.objects[ObjectType.FACE][self.current_task.person_id].is_vaccinated = usr_data[2]
+        self.objects[ObjectType.FACE][self.current_task.person_id].physical_exercise = usr_data[4]
+        self.objects[ObjectType.FACE][self.current_task.person_id].doctor = self.get_color_enum(usr_data[3])
+        self.objects[ObjectType.FACE][self.current_task.person_id].suitable_vaccine = self.get_color_enum(usr_data[5]) 
+        
+        person = self.objects[ObjectType.FACE][self.current_task.person_id]
+        
 
         # Check for suitable clinic
         clinic_list = self.objects[ObjectType.CYLINDER]
@@ -509,17 +539,39 @@ class MainNode:
                 break 
 
         if self.current_task.cylinder_id == -1: # No suitable clinc found
-            self.current_task.state = FaceProcessState.CLINIC_SEARCH
+            self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+            
+    def on_num_detected(self, data):
+        self.current_age = str(data.x) + str(data.y) 
+        print("Age of person is: " + self.current_age)
+        
+    def on_qr_detected(self, data):
+        self.current_data = str(data.data)
         
 
     def on_clinic_conversation(self):
         return
 
-    def on_vaccine_pick_up(self):
-        return 
+    def on_vaccine_pick_up(self): 
+        # approach the ring 
+        
+        self.robot_arm.publish("ring")
+        rospy.sleep(1) 
+        self.robot_arm.publish("retract")
+
 
     def on_deliver_vaccine(self):
-        return
+        # current person
+        person = self.objects[ObjectType.FACE][self.current_task.person_id]
+        
+        rospy.loginfo(f"Vaccinating person - {self.current_task.person_id}")
+        # vaccinate the person 
+        self.robot_arm.publish("extend")
+        rospy.sleep(1) 
+        self.robot_arm.publish("retract") 
+        
+        self.objects[ObjectType.FACE][self.current_task.person_id].is_vaccinated = True 
+
 
 #---------------------------- HELPERS ---------------------------
     def euler_from_quaternion(self, x, y, z, w): 

@@ -26,6 +26,11 @@ class Arm_Mover():
         self.extend = JointTrajectory()
         self.extend.joint_names = ["arm_shoulder_pan_joint", "arm_shoulder_lift_joint", "arm_elbow_flex_joint", "arm_wrist_flex_joint"]
         self.extend.points = [JointTrajectoryPoint(positions=[0,0.7,0.5,0],
+                                                    time_from_start = rospy.Duration(1))] 
+                                                    
+        self.pick_ring = JointTrajectory()
+        self.pick_ring.joint_names = ["arm_shoulder_pan_joint", "arm_shoulder_lift_joint", "arm_elbow_flex_joint", "arm_wrist_flex_joint"]
+        self.pick_ring.points = [JointTrajectoryPoint(positions=[0,-0.6,1.4,1],
                                                     time_from_start = rospy.Duration(1))]
 
     def new_user_command(self, data):
@@ -41,6 +46,9 @@ class Arm_Mover():
             elif self.user_command == 'extend':
                 self.arm_movement_pub.publish(self.extend)
                 print('Extended arm!')
+            elif self.user_command == 'ring':
+                self.arm_movement_pub.publish(self.pick_ring)
+                print('Extended arm (ring)!')
             else:
                 print('Unknown instruction:', self.user_command)
                 return(-1)
