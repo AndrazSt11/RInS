@@ -17,7 +17,11 @@ roslaunch markers start.launch
 
 # Utility
 rosrun robot_arm move_arm.py 
-rosrun sound_play soundplay_node.py
+rosrun sound_play soundplay_node.py 
+
+# QR and digit extractor 
+rosrun data_viewer extract_qr
+rosrun data_viewer extract_digits
 
 # Main
 rosrun main_package Main.py
