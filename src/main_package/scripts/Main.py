@@ -167,7 +167,11 @@ class MainNode:
         self.current_age = 0 
         
         # data of current person 
-        self.current_data = ""
+        self.current_data = ""  
+        
+        # data of current cylinder 
+        self.current_cy = ""
+        
 
         self.mover = Mover()
         self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl") 
@@ -501,8 +505,9 @@ class MainNode:
 
         # Check if it wears mask
         rospy.loginfo(f"Wears mask? - {person.wears_mask}")
-        if(person.wears_mask == False):
+        if(person.wears_mask == ObjProperty.FALSE):
             s = "Please put on your mask!"
+            print("Please put on your mask!")
             rospy.sleep(2)
             self.soundhandle.say(s, voice, volume)
 
@@ -530,24 +535,31 @@ class MainNode:
         #--------------------------------------------------------------
 
         # Get person info 
-        print(self.current_data)
         usr_data = self.current_data.split(",") 
         
-        person.is_vaccinated = get_obj_property_enum(usr_data[2])
-        person.physical_exercise = usr_data[4]
-        person.doctor = self.get_color_enum(usr_data[3])
+        print(usr_data)
+
+        person.is_vaccinated = self.get_obj_property_enum(usr_data[2])
+        person.physical_exercise = int(usr_data[4][1:])
+        person.doctor = self.get_color_enum(usr_data[3][1:])
         # person.suitable_vaccine = self.get_color_enum(usr_data[5])
-        person.age = self.current_age
+        person.age = int(usr_data[1][1:])# self.current_age 
+        
+        print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age)
 
         # Check for suitable clinic
         clinic_list = self.objects[ObjectType.CYLINDER]
-        for i in range(0, len(clinic_list)):
-            if clinic_list[i].color == person.doctor:
+        for i in range(0, len(clinic_list)): 
+            print("Doktor: ", clinic_list[i].color) 
+            print("Osebni zdravnik trenutne osebe: ", person.doctor)
+            if clinic_list[i].color == person.doctor: 
+                print("Going to suitable clinic")
                 self.current_task.cylinder_id = i
                 break 
 
         # No suitable clinc found
         if self.current_task.cylinder_id == -1: 
+            print("No suitable clinic. Look more")
             self.current_task.state = FaceProcessState.CLINIC_SEARCH 
 
 
@@ -556,15 +568,22 @@ class MainNode:
         cylinder = self.objects[ObjectType.CYLINDER][self.current_task.cylinder_id]
         
         # Train classificier if necessary
-        if cylinder.classificier == ObjProperty.UNKNOWN:
-            link = self.current_data 
-            # link = "https://box.vicos.si/rins/17.txt" TESTING
-            cylinder.classificier = self.train_classificier(link)
+        if cylinder.classificier == ObjProperty.UNKNOWN: 
+            if self.current_cy == "":
+                print("Cylinder QR was not detected")
+                self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+            else:
+                link = self.current_cy
+                # link = "https://box.vicos.si/rins/17.txt" TESTING
+                cylinder.classificier = self.train_classificier(link)
 
         # Predict suitable vaccine
         predicted_vaccine = cylinder.classificier.predict([[person.age, person.physical_exercise]])[0]
         person.suitable_vaccine = self.get_vaccine_color(predicted_vaccine)
         print("Person vaccine:", person.suitable_vaccine)
+        
+        # put current_cy back to "" 
+        self.current_cy = ""
 
         # Check for suitable vaccine
         vaccine_list = self.objects[ObjectType.RING]
@@ -581,9 +600,13 @@ class MainNode:
     def on_vaccine_pick_up(self): 
         # TODO: approach the ring 
         
+        print("Picking up the vaccine")
+        
         self.robot_arm.publish("ring")
         rospy.sleep(1) 
-        self.robot_arm.publish("retract")
+        self.robot_arm.publish("retract") 
+        
+        self.current_task.person_id
 
 
     def on_deliver_vaccine(self):
@@ -611,8 +634,13 @@ class MainNode:
         print("Age of person is: " + self.current_age)
         
 
-    def on_qr_detected(self, data):
-        self.current_data = str(data.data)
+    def on_qr_detected(self, data): 
+        # print(str(data.data)) 
+        
+        if (str(data.data)[0:5] == "https"): 
+            self.current_cy = str(data.data)
+        else:
+            self.current_data = str(data.data)
 
 
 #---------------------------- CLASSIFICIER ---------------------------
