@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import sys
+import math
 import os
 import rospy
 import dlib
@@ -170,7 +171,9 @@ class face_detector_dnn:
 
                 # Find the distance to the detected face
                 face_distance = float(np.nanmean(depth_image[y1:y2,x1:x2]))
-
+                if math.isnan(face_distance):
+                    break
+                
                 rospy.loginfo('Distance to face %f', face_distance)
 
                 # Get the time that the depth image was recieved
