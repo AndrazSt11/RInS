@@ -7,8 +7,10 @@ import rospy
 import numpy as np 
 from enum import Enum, IntEnum 
 from time import sleep
+from urllib.request import urlopen
 
 from sklearn import neural_network
+import sklearn.metrics as metrics
 import joblib
 import pathlib
 
@@ -105,8 +107,7 @@ class CylinderObj(Object):
     def __init__(self, id, x, y, z, norm_x, norm_y, color):
         Object.__init__(self, id, ObjectType.CYLINDER, x, y, z, norm_x, norm_y)
         self.color = color
-        # TODO: add data from QR detection
-
+        self.classificier = ObjProperty.UNKNOWN
 
 
 class Task: 
@@ -182,6 +183,8 @@ class MainNode:
         self.num_detection_subsriber = rospy.Subscriber('num_detection', Detected_number, self.on_num_detected)
         
         # soundhandle
+        self.volume = 2.0
+        self.voice = 'voice_kal_diphone'
         self.soundhandle = SoundClient()
 
 
@@ -253,8 +256,8 @@ class MainNode:
                 self.update_greet_position(self.current_task)
 
 
-        if self.state == State.EXPLORE:
-            self.mover.follow_path()
+        # if self.state == State.EXPLORE:
+        #     self.mover.follow_path()
 
 
         if self.state == State.FINISH: 
@@ -414,7 +417,7 @@ class MainNode:
         if old.type == ObjectType.FACE:
             old.wears_mask = old.wears_mask or new.wears_mask
 
-        # upadte marker
+        # update marker
         self.publish_object_marker(old, exists=True)
 
             
@@ -455,6 +458,7 @@ class MainNode:
             self.publish_object_marker(new_object, exists=False)
 
 
+        # NOTE: DEPRECATED - probably detection limit will be set to 1 for all object types
         # TODO: add pending object list, which have not reached detection limit
         # # lets check if we need to queue it
         # if (new_task.num_of_detections >= self.min_detections[type]) and (not new_task in self.tasks):
@@ -466,6 +470,7 @@ class MainNode:
     def on_face_detection(self, data):
         self.add_object(ObjectType.FACE, data.world_x, data.world_y, data.world_z, False, self.get_obj_property_enum(data.wears_mask))
 
+
     def on_cylinder_detection(self, data): 
         color = self.get_color_label(self.mlpClf.predict([data.colorHistogram]))
         if (color == "White") or (color == "Black"):
@@ -474,6 +479,7 @@ class MainNode:
 
         self.add_object(ObjectType.CYLINDER, data.cylinder_x, data.cylinder_y, data.cylinder_z, self.get_color_enum(color), False)
 
+
     def on_ring_detection(self, data):
         if data.color == "White":
             rospy.logwarn(f"Ring detection: false-positive color={data.color}")
@@ -481,10 +487,10 @@ class MainNode:
 
         self.add_object(ObjectType.RING, data.ring_x, data.ring_y, data.ring_z, self.get_color_enum(data.color), False)
 
+
     def on_face_conversation(self):
         volume = 2.0
         voice = 'voice_kal_diphone'
-
         person = self.objects[ObjectType.FACE][self.current_task.person_id]
         
         # Greet
@@ -502,34 +508,36 @@ class MainNode:
 
         # Check social distancing
         social_distancing_list = self.is_social_distancing(person)
-        print("Social dist list:", social_distancing_list)
-        
         is_social_distancing = len(social_distancing_list) == 0
         rospy.loginfo(f"Follows social distancing? - {is_social_distancing}")
+        
         if(not is_social_distancing):
+            # Add task to warn other person as well
+            for person_id in social_distancing_list:
+                self.tasks.append(SocialDistWarn(self.taskId, person_id))
+                self.taskId += 1
+
             s = "Please keep social distance!" 
             rospy.sleep(2)
             self.soundhandle.say(s, voice, volume) 
-            
-        # age of current face(person)
-        self.objects[ObjectType.FACE][self.current_task.person_id].age = self.current_age
 
-        # TODO: add task to go warn other faces
-        
-        # Get info (QR code or by speach) 
-        # data of current face is stored in self.current_data --> add to the face_object   
-        
+        #----------------------TESTING---------------------------------
+        # person.is_vaccinated = ObjProperty,FALSE
+        # person.physical_exercise = 36.734693877551024
+        # person.doctor = self.get_color_enum("Red")
+        # # person.suitable_vaccine = self.get_color_enum(usr_data[5])
+        # person.age = 48.484848484848484
+        #--------------------------------------------------------------
+
+        # Get person info 
         print(self.current_data)
-          
         usr_data = self.current_data.split(",") 
         
-        self.objects[ObjectType.FACE][self.current_task.person_id].is_vaccinated = usr_data[2]
-        self.objects[ObjectType.FACE][self.current_task.person_id].physical_exercise = usr_data[4]
-        self.objects[ObjectType.FACE][self.current_task.person_id].doctor = self.get_color_enum(usr_data[3])
-        self.objects[ObjectType.FACE][self.current_task.person_id].suitable_vaccine = self.get_color_enum(usr_data[5]) 
-        
-        person = self.objects[ObjectType.FACE][self.current_task.person_id]
-        
+        person.is_vaccinated = get_obj_property_enum(usr_data[2])
+        person.physical_exercise = usr_data[4]
+        person.doctor = self.get_color_enum(usr_data[3])
+        # person.suitable_vaccine = self.get_color_enum(usr_data[5])
+        person.age = self.current_age
 
         # Check for suitable clinic
         clinic_list = self.objects[ObjectType.CYLINDER]
@@ -538,22 +546,40 @@ class MainNode:
                 self.current_task.cylinder_id = i
                 break 
 
-        if self.current_task.cylinder_id == -1: # No suitable clinc found
+        # No suitable clinc found
+        if self.current_task.cylinder_id == -1: 
             self.current_task.state = FaceProcessState.CLINIC_SEARCH 
-            
-    def on_num_detected(self, data):
-        self.current_age = str(data.x) + str(data.y) 
-        print("Age of person is: " + self.current_age)
-        
-    def on_qr_detected(self, data):
-        self.current_data = str(data.data)
-        
+
 
     def on_clinic_conversation(self):
-        return
+        person = self.objects[ObjectType.FACE][self.current_task.person_id]
+        cylinder = self.objects[ObjectType.CYLINDER][self.current_task.cylinder_id]
+        
+        # Train classificier if necessary
+        if cylinder.classificier == ObjProperty.UNKNOWN:
+            link = self.current_data 
+            # link = "https://box.vicos.si/rins/17.txt" TESTING
+            cylinder.classificier = self.train_classificier(link)
+
+        # Predict suitable vaccine
+        predicted_vaccine = cylinder.classificier.predict([[person.age, person.physical_exercise]])[0]
+        person.suitable_vaccine = self.get_vaccine_color(predicted_vaccine)
+        print("Person vaccine:", person.suitable_vaccine)
+
+        # Check for suitable vaccine
+        vaccine_list = self.objects[ObjectType.RING]
+        for i in range(0, len(vaccine_list)):
+            if vaccine_list[i].color == person.suitable_vaccine:
+                self.current_task.ring_id = i
+                break 
+
+        # No suitable vaccine found
+        if self.current_task.ring_id == -1: 
+            self.current_task.state = FaceProcessState.VACCINE_SEARCH
+        
 
     def on_vaccine_pick_up(self): 
-        # approach the ring 
+        # TODO: approach the ring 
         
         self.robot_arm.publish("ring")
         rospy.sleep(1) 
@@ -561,16 +587,64 @@ class MainNode:
 
 
     def on_deliver_vaccine(self):
-        # current person
-        person = self.objects[ObjectType.FACE][self.current_task.person_id]
-        
         rospy.loginfo(f"Vaccinating person - {self.current_task.person_id}")
-        # vaccinate the person 
         self.robot_arm.publish("extend")
         rospy.sleep(1) 
         self.robot_arm.publish("retract") 
         
-        self.objects[ObjectType.FACE][self.current_task.person_id].is_vaccinated = True 
+        self.objects[ObjectType.FACE][self.current_task.person_id].is_vaccinated = ObjProperty.TRUE
+        self.current_task.state = FaceProcessState.FINISHED
+        self.current_task.finished = True
+
+
+    def on_social_dist_warn_reached(self):
+        # Warn
+        s = "Please keep social distance!" 
+        rospy.sleep(2)
+        self.soundhandle.say(s, self.voice, self.volume) 
+
+        self.current_task.finished = True
+        
+
+    def on_num_detected(self, data):
+        self.current_age = str(data.x) + str(data.y) 
+        print("Age of person is: " + self.current_age)
+        
+
+    def on_qr_detected(self, data):
+        self.current_data = str(data.data)
+
+
+#---------------------------- CLASSIFICIER ---------------------------
+    def train_classificier(self, link):
+        # Get data
+        dataSetX, dataSetY = self.get_classificier_data(link)
+
+        # Train 
+        print("Training classificier")
+        mlpClf = neural_network.MLPClassifier(hidden_layer_sizes=(32, 32), activation="relu", solver="adam", alpha=0.0001,
+                                              max_iter=30, n_iter_no_change=20, verbose=False)
+        mlpClf.fit(dataSetX, dataSetY)
+
+        print("Accuracy:", metrics.accuracy_score(dataSetY, mlpClf.predict(dataSetX), normalize=True))
+        print("Training finished")
+        
+        return mlpClf
+
+    def get_classificier_data(self, link):
+        dataSetX = []
+        dataSetY = []
+        
+        f = urlopen(link)
+        myfile = f.read()
+        lines = myfile.splitlines()
+
+        for line in lines:
+            line = line.decode("utf-8").split(',')
+            dataSetX.append([float(line[0]), float(line[1])])
+            dataSetY.append(line[2])
+
+        return dataSetX, dataSetY
 
 
 #---------------------------- HELPERS ---------------------------
@@ -639,6 +713,18 @@ class MainNode:
             return "White"
         elif color_enum == Color.YELLOW:
             return "Yellow"
+
+    def get_vaccine_color(self, vaccine_name):
+        if vaccine_name == "BlacknikV":
+            return Color.BLACK
+        elif vaccine_name == "StellaBluera":
+            return Color.BLUE
+        elif vaccine_name == "Greenzer":
+            return Color.GREEN
+        elif vaccine_name == "Rederna":
+            return Color.RED
+
+        return Color.UNKNOWN
             
     def get_obj_property_enum(self, prop):
         if prop:
@@ -657,12 +743,13 @@ class MainNode:
         
         return False
 
-    # # TODO: take normals into account
     def is_social_distancing(self, current_person):
         social_dist_id = []
         for person in self.objects[ObjectType.FACE]:
             distance = math.sqrt((current_person.x - person.x)**2 + (current_person.y - person.y)**2) 
-            if((distance < 1.0) and (current_person.id != person.id)):
+            normal_compare = current_person.norm_x * person.norm_x + current_person.norm_y * person.norm_y
+
+            if((distance < 1.0) and (normal_compare > 0.06) and (current_person.id != person.id)):
                 social_dist_id.append(person.id)
 
         return social_dist_id;
@@ -676,7 +763,6 @@ def main():
         mainNode.before_execute()
         mainNode.execute()
         rate.sleep()
-
 
 if __name__ == '__main__':
     main()
