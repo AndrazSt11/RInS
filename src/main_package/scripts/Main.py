@@ -256,8 +256,8 @@ class MainNode:
                 self.update_greet_position(self.current_task)
 
 
-        # if self.state == State.EXPLORE:
-        #     self.mover.follow_path()
+        if self.state == State.EXPLORE:
+            self.mover.follow_path()
 
 
         if self.state == State.FINISH: 
