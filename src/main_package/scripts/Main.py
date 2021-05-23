@@ -164,7 +164,7 @@ class MainNode:
         } 
         
         # age of current person 
-        self.current_age = 0 
+        self.current_age = -1
         
         # data of current person 
         self.current_data = ""  
@@ -532,7 +532,8 @@ class MainNode:
         # person.doctor = self.get_color_enum("Red")
         # # person.suitable_vaccine = self.get_color_enum(usr_data[5])
         # person.age = 48.484848484848484
-        #--------------------------------------------------------------
+        #-------------------------------------------------------------- 
+        
 
         # Get person info 
         usr_data = self.current_data.split(",") 
@@ -542,16 +543,25 @@ class MainNode:
         person.is_vaccinated = self.get_obj_property_enum(usr_data[2])
         person.physical_exercise = int(usr_data[4][1:])
         person.doctor = self.get_color_enum(usr_data[3][1:])
-        # person.suitable_vaccine = self.get_color_enum(usr_data[5])
-        person.age = int(usr_data[1][1:])# self.current_age 
+        # person.suitable_vaccine = self.get_color_enum(usr_data[5]) 
+        
+        # check if age was detected 
+        if self.current_age > -1: 
+            person.age = self.current_age 
+        else:
+            print("Couldn't detect age with digit extractor. Reading it from QR")
+            person.age = int(usr_data[1][1:])# self.current_age 
+            
+        # setting age to default value
+        self.current_age = -1
         
         print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age)
 
         # Check for suitable clinic
         clinic_list = self.objects[ObjectType.CYLINDER]
         for i in range(0, len(clinic_list)): 
-            print("Doktor: ", clinic_list[i].color) 
-            print("Osebni zdravnik trenutne osebe: ", person.doctor)
+            # print("Doktor: ", clinic_list[i].color) 
+            # print("Osebni zdravnik trenutne osebe: ", person.doctor)
             if clinic_list[i].color == person.doctor: 
                 print("Going to suitable clinic")
                 self.current_task.cylinder_id = i
@@ -570,7 +580,8 @@ class MainNode:
         # Train classificier if necessary
         if cylinder.classificier == ObjProperty.UNKNOWN: 
             if self.current_cy == "":
-                print("Cylinder QR was not detected")
+                print("Cylinder QR was not detected") 
+                # TODO: if the QR was not detected find better position
                 self.current_task.state = FaceProcessState.CLINIC_SEARCH 
             else:
                 link = self.current_cy
@@ -630,7 +641,8 @@ class MainNode:
         
 
     def on_num_detected(self, data):
-        self.current_age = str(data.x) + str(data.y) 
+        age = str(data.x) + str(data.y)
+        self.current_age = int(age) 
         print("Age of person is: " + self.current_age)
         
 
