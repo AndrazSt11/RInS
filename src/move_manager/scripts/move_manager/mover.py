@@ -4,7 +4,8 @@ import rospy
 import actionlib
 
 from enum import Enum
-from geometry_msgs.msg import Point, Quaternion, Pose
+from geometry_msgs.msg import Point, Quaternion, Pose, Twist, Vector3
+
 from std_msgs.msg import String
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 from move_manager.map_processer import get_map_points, is_point_valid
@@ -68,9 +69,12 @@ class Mover():
         self.path = Path(points)
         self.image_data = image_data
         
+        # twist move client
+        self.move_twist_publisher = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=10)
+       
         # get move base client
         self.move_base_client = self.get_base_client()
-    
+
 
     def get_base_client(self):
         client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
@@ -188,3 +192,7 @@ class Mover():
         self.is_following_path = False
 
         self.move_base_client.cancel_goal()
+
+    
+    def move_forward(self, forward_speed):
+        self.move_twist_publisher.publish(Twist(Vector3(forward_speed, 0.0, 0.0), Vector3(0.0, 0.0, 0.0)))
