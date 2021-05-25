@@ -395,8 +395,14 @@ class MainNode:
                 continue
 
             # Object exists if correct distance 
-            if dist < 1.4 :
-                return old_object
+            
+            # test -------> maby needs fix
+            if object.type == ObjectType.FACE:
+                if dist < 0.3:
+                    return old_object
+            else:
+                if dist < 1.4 :
+                    return old_object
 
 
     def update_object(self, old, new):
@@ -545,7 +551,7 @@ class MainNode:
         
         while(True):
             if (self.current_data == ""):
-                self.mover.move_foward(-0.5)
+                self.mover.move_forward(-0.5)
                 print("Moving backwards")
                 rospy.sleep(3) 
             else:
@@ -559,7 +565,7 @@ class MainNode:
         
         print("R: Have you already been vaccinated?")
 
-        person.is_vaccinated = self.get_obj_property_enum(usr_data[2]) 
+        person.is_vaccinated = self.get_obj_property_enum(usr_data[2]) # TODO: if person is vaccinated then don't look for clinic
         
         if (person.is_vaccinated == ObjProperty.TRUE):
             print("P: Yes")
@@ -590,21 +596,25 @@ class MainNode:
         # setting current_data on default value 
         self.current_data = ""
         
+        if (person.is_vaccinated == ObjProperty.TRUE):
+            print("This person was already vaccinated. Finish current task")
+            self.current_task.state = FaceProcessState.FINISHED
+            self.current_task.finished = True
+        else:
+            # Check for suitable clinic
+            clinic_list = self.objects[ObjectType.CYLINDER]
+            for i in range(0, len(clinic_list)): 
+                # print("Doktor: ", clinic_list[i].color) 
+                # print("Osebni zdravnik trenutne osebe: ", person.doctor)
+                if clinic_list[i].color == person.doctor: 
+                    print("Going to suitable clinic")
+                    self.current_task.cylinder_id = i
+                    break 
 
-        # Check for suitable clinic
-        clinic_list = self.objects[ObjectType.CYLINDER]
-        for i in range(0, len(clinic_list)): 
-            # print("Doktor: ", clinic_list[i].color) 
-            # print("Osebni zdravnik trenutne osebe: ", person.doctor)
-            if clinic_list[i].color == person.doctor: 
-                print("Going to suitable clinic")
-                self.current_task.cylinder_id = i
-                break 
-
-        # No suitable clinc found
-        if self.current_task.cylinder_id == -1: 
-            print("No suitable clinic. Look more")
-            self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+            # No suitable clinc found
+            if self.current_task.cylinder_id == -1: 
+                print("No suitable clinic. Look more")
+                self.current_task.state = FaceProcessState.CLINIC_SEARCH 
 
 
     def on_clinic_conversation(self):
@@ -684,7 +694,7 @@ class MainNode:
     def on_num_detected(self, data):
         age = str(data.x) + str(data.y)
         self.current_age = int(age) 
-        # print("Age of person is: " + self.current_age)
+        #print("Age of person is: " + self.current_age)
         
 
     def on_qr_detected(self, data): 
