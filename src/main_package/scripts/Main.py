@@ -555,11 +555,24 @@ class MainNode:
         # Get person info 
         usr_data = self.current_data.split(",") 
         
-        print(usr_data)
+        # print(usr_data) 
+        
+        print("R: Have you already been vaccinated?")
 
-        person.is_vaccinated = self.get_obj_property_enum(usr_data[2])
+        person.is_vaccinated = self.get_obj_property_enum(usr_data[2]) 
+        
+        if (person.is_vaccinated == ObjProperty.TRUE):
+            print("P: Yes")
+        else:
+            print("P: No")
+            
+        print("R: Who is your personal doctor?")
+        
         person.physical_exercise = int(usr_data[4][1:])
-        person.doctor = self.get_color_enum(usr_data[3][1:])
+        
+        person.doctor = self.get_color_enum(usr_data[3][1:]) 
+        
+        print("P: My personal doctor is: ", self.get_color_string(person.doctor))
         # person.suitable_vaccine = self.get_color_enum(usr_data[5]) 
         
         # check if age was detected 
@@ -617,7 +630,7 @@ class MainNode:
         # Predict suitable vaccine
         predicted_vaccine = cylinder.classificier.predict([[person.age, person.physical_exercise]])[0]
         person.suitable_vaccine = self.get_vaccine_color(predicted_vaccine)
-        print("Person vaccine:", person.suitable_vaccine)
+        print("R: Person needs vaccine:", person.suitable_vaccine)
         
         # put current_cy back to "" 
         self.current_cy = ""
@@ -626,11 +639,13 @@ class MainNode:
         vaccine_list = self.objects[ObjectType.RING]
         for i in range(0, len(vaccine_list)):
             if vaccine_list[i].color == person.suitable_vaccine:
+                print("Going to suitable vaccine")
                 self.current_task.ring_id = i
                 break 
 
         # No suitable vaccine found
         if self.current_task.ring_id == -1: 
+            print("No suitable vaccine. Look more")
             self.current_task.state = FaceProcessState.VACCINE_SEARCH
         
 
