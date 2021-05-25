@@ -652,7 +652,7 @@ class MainNode:
     def on_vaccine_pick_up(self): 
         # TODO: approach the ring 
         
-        print("Picking up the vaccine")
+        print("Picking up the vaccine for the person - {self.current_task.person_id}")
         
         self.robot_arm.publish("ring")
         rospy.sleep(1) 
@@ -684,7 +684,7 @@ class MainNode:
     def on_num_detected(self, data):
         age = str(data.x) + str(data.y)
         self.current_age = int(age) 
-        print("Age of person is: " + self.current_age)
+        # print("Age of person is: " + self.current_age)
         
 
     def on_qr_detected(self, data): 
