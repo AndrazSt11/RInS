@@ -317,14 +317,21 @@ class MainNode:
         fi1 = math.atan2(object.y - robot_pose.position.y, object.x - robot_pose.position.x)
         initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi1), robot_pose.position.y + travel_distance * math.sin(fi1), 0.0)
 
-        point = self.get_valid_point_near(initial_point)
+        point = self.get_valid_point_near(initial_point, object)
         if not point:
             rospy.logwarn(f"Couldn't find a valid point. Aborting task: id={object.id}")
             return False, None, None
 
-        # Orient to object
-        fi = math.atan2(object.y - point.y, object.x - point.x)
-        quat = transformations.quaternion_from_euler(0, 0, fi)
+        # Orient to object 
+        if (object.type == ObjectType.FACE): 
+            # turn a litle to the right of the face to detect QR code
+            print("Objekt je obraz")
+            fi = math.atan2(object.y - point.y, (object.x + 0.2) - point.x)
+            quat = transformations.quaternion_from_euler(0, 0, fi)
+        else:
+            print("Objekt NI obraz")
+            fi = math.atan2(object.y - point.y, object.x - point.x)
+            quat = transformations.quaternion_from_euler(0, 0, fi)
 
         return True, point, Quaternion(0, 0, quat[2], quat[3])
 
@@ -534,6 +541,16 @@ class MainNode:
         # person.age = 48.484848484848484
         #-------------------------------------------------------------- 
         
+        # TODO: Check if QR code was detected, and if it wasn't move robot a little bit backwards 
+        
+        while(True):
+            if (self.current_data == ""):
+                self.mover.move_foward(-0.5)
+                print("Moving backwards")
+                rospy.sleep(3) 
+            else:
+                break
+                
 
         # Get person info 
         usr_data = self.current_data.split(",") 
@@ -555,7 +572,11 @@ class MainNode:
         # setting age to default value
         self.current_age = -1
         
-        print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age)
+        print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age) 
+        
+        # setting current_data on default value 
+        self.current_data = ""
+        
 
         # Check for suitable clinic
         clinic_list = self.objects[ObjectType.CYLINDER]
@@ -581,7 +602,12 @@ class MainNode:
         if cylinder.classificier == ObjProperty.UNKNOWN: 
             if self.current_cy == "":
                 print("Cylinder QR was not detected") 
-                # TODO: if the QR was not detected find better position
+                # TODO: if the QR was not detected find better position 
+                
+                # find another valid point and move there 
+                # rospy.loginfo("Looking for new position near cylinder") 
+                # self.mover.stop_robot()
+                
                 self.current_task.state = FaceProcessState.CLINIC_SEARCH 
             else:
                 link = self.current_cy
@@ -649,6 +675,7 @@ class MainNode:
     def on_qr_detected(self, data): 
         # print(str(data.data)) 
         
+        # check if detected QR is on the cylinder or face 
         if (str(data.data)[0:5] == "https"): 
             self.current_cy = str(data.data)
         else:
@@ -772,14 +799,18 @@ class MainNode:
         
         return ObjProperty.FALSE
 
-    def get_valid_point_near(self, point):
+    def get_valid_point_near(self, point, objekt):
         # Try with different offsets
         for offset in [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
             for x in [0, -offset, offset]:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
-                    if self.mover.is_valid(temp):
-                        return temp
+                    if self.mover.is_valid(temp): 
+                        if objekt.type == ObjectType.FACE:
+                            # TODO: check normals
+                            return temp
+                        else:
+                            return temp
         
         return False
 
