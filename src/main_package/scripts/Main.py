@@ -316,6 +316,7 @@ class MainNode:
 
         fi1 = math.atan2(object.y - robot_pose.position.y, object.x - robot_pose.position.x)
         initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi1), robot_pose.position.y + travel_distance * math.sin(fi1), 0.0)
+        
 
         point = self.get_valid_point_near(initial_point, object)
         if not point:
@@ -547,8 +548,6 @@ class MainNode:
         # person.age = 48.484848484848484
         #-------------------------------------------------------------- 
         
-        # TODO: Check if QR code was detected, and if it wasn't move robot a little bit backwards 
-        
         while(True):
             if (self.current_data == ""):
                 self.mover.move_forward(-0.5)
@@ -565,9 +564,9 @@ class MainNode:
         
         print("R: Have you already been vaccinated?")
 
-        person.is_vaccinated = self.get_obj_property_enum(usr_data[2]) # TODO: if person is vaccinated then don't look for clinic
+        person.is_vaccinated = self.get_obj_property_enum(usr_data[2])
         
-        if (person.is_vaccinated == ObjProperty.TRUE):
+        if (person.is_vaccinated != ObjProperty.TRUE):
             print("P: Yes")
         else:
             print("P: No")
@@ -585,18 +584,18 @@ class MainNode:
         if self.current_age > -1: 
             person.age = self.current_age 
         else:
-            print("Couldn't detect age with digit extractor. Reading it from QR")
+            rospy.loginfo(f"Couldn't detect age with digit extractor. Reading it from QR")
             person.age = int(usr_data[1][1:])# self.current_age 
             
         # setting age to default value
         self.current_age = -1
         
-        print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age) 
+        # print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age) 
         
         # setting current_data on default value 
         self.current_data = ""
         
-        if (person.is_vaccinated == ObjProperty.TRUE):
+        if (person.is_vaccinated != ObjProperty.TRUE):
             print("This person was already vaccinated. Finish current task")
             self.current_task.state = FaceProcessState.FINISHED
             self.current_task.finished = True
@@ -640,7 +639,7 @@ class MainNode:
         # Predict suitable vaccine
         predicted_vaccine = cylinder.classificier.predict([[person.age, person.physical_exercise]])[0]
         person.suitable_vaccine = self.get_vaccine_color(predicted_vaccine)
-        print("R: Person needs vaccine:", person.suitable_vaccine)
+        rospy.loginfo(f"R: Person needs vaccine:", person.suitable_vaccine)
         
         # put current_cy back to "" 
         self.current_cy = ""
@@ -649,20 +648,18 @@ class MainNode:
         vaccine_list = self.objects[ObjectType.RING]
         for i in range(0, len(vaccine_list)):
             if vaccine_list[i].color == person.suitable_vaccine:
-                print("Going to suitable vaccine")
+                print("R: Going to suitable vaccine")
                 self.current_task.ring_id = i
                 break 
 
         # No suitable vaccine found
         if self.current_task.ring_id == -1: 
-            print("No suitable vaccine. Look more")
+            print("R: No suitable vaccine. Look more")
             self.current_task.state = FaceProcessState.VACCINE_SEARCH
         
 
     def on_vaccine_pick_up(self): 
-        # TODO: approach the ring 
-        
-        print("Picking up the vaccine for the person - {self.current_task.person_id}")
+        rospy.loginfo(f"Picking up the vaccine for the person - {self.current_task.person_id}")
         
         self.robot_arm.publish("ring")
         rospy.sleep(1) 
@@ -831,9 +828,19 @@ class MainNode:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
                     if self.mover.is_valid(temp): 
-                        if objekt.type == ObjectType.FACE:
+                        if objekt.type == ObjectType.FACE: 
                             # TODO: check normals
-                            return temp
+                            norm = np.array([objekt.norm_x, objekt.norm_y]) 
+                            
+                            current = np.array([temp.x, temp.y]) 
+                            plane = np.array([objekt.x, objekt.y]) 
+                            
+                            p1 = np.array([current[0] - plane[0], current[1] - plane[1]])
+                            
+                            result = np.dot(norm, p1) 
+                            
+                            if (result > 0):
+                                return temp
                         else:
                             return temp
         
