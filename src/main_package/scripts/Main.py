@@ -700,11 +700,11 @@ class MainNode:
         
 
     def on_qr_detected(self, data): 
-        print(str(data.data)[2:7]) 
+        # print(str(data.data)[2:7]) 
         
         # check if detected QR is on the cylinder or face 
         if (str(data.data)[2:7] == "https"): 
-            self.current_cy = str(data.data)[1:]
+            self.current_cy = str(data.data)[1:-1]
         else:
             self.current_data = str(data.data)
 
