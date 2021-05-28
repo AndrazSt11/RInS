@@ -238,7 +238,8 @@ class MainNode:
                         if self.current_task.state == FaceProcessState.FACE_CONVERSATOIN:
                             self.on_face_conversation()
 
-                        if self.current_task.state == FaceProcessState.CLINIC_CONVERSATOIN:
+                        if self.current_task.state == FaceProcessState.CLINIC_CONVERSATOIN: 
+                            print("Checking if it goes to clinic conversation")
                             self.on_clinic_conversation()
 
                         if self.current_task.state == FaceProcessState.PICK_UP_VACCINE:
@@ -296,7 +297,7 @@ class MainNode:
             elif task.state == FaceProcessState.FACE_CONVERSATOIN:
                 return self.objects[ObjectType.CYLINDER][task.cylinder_id]
 
-            elif task.state == FaceProcessState.CLINIC_CONVERSATOIN:
+            elif task.state == FaceProcessState.CLINIC_CONVERSATOIN: 
                 return self.objects[ObjectType.RING][task.ring_id]
 
             elif task.state == FaceProcessState.PICK_UP_VACCINE:
@@ -362,12 +363,12 @@ class MainNode:
             if task.type == TaskType.FACE_PROCESS:
                 person = self.objects[ObjectType.FACE][task.person_id]
                 if task.state == FaceProcessState.CLINIC_SEARCH and object.type == ObjectType.CYLINDER and person.doctor == object.color:
-                    task.cylinder_id = object.id
-                    task.state = FaceProcessState.CLINIC_CONVERSATOIN
+                    task.cylinder_id = object.id 
+                    task.state = FaceProcessState.FACE_CONVERSATOIN
                 
                 if task.state == FaceProcessState.VACCINE_SEARCH and object.type == ObjectType.RING and person.suitable_vaccine == object.color:
                     task.ring_id = object.id
-                    task.state = FaceProcessState.PICK_UP_VACCINE
+                    task.state = FaceProcessState.CLINIC_CONVERSATOIN
 
 
     #----------------------- OBJECT HANDLING --------------------------
@@ -399,7 +400,7 @@ class MainNode:
             
             # test -------> maby needs fix
             if object.type == ObjectType.FACE:
-                if dist < 0.3:
+                if dist < 0.5: # TODO: test different values
                     return old_object
             else:
                 if dist < 1.4 :
@@ -617,6 +618,7 @@ class MainNode:
 
 
     def on_clinic_conversation(self):
+        print("Testing if clinic_conversation is active")
         person = self.objects[ObjectType.FACE][self.current_task.person_id]
         cylinder = self.objects[ObjectType.CYLINDER][self.current_task.cylinder_id]
         
@@ -631,6 +633,7 @@ class MainNode:
                 # self.mover.stop_robot()
                 
                 self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+                return
             else:
                 link = self.current_cy
                 # link = "https://box.vicos.si/rins/17.txt" TESTING
@@ -668,7 +671,9 @@ class MainNode:
         self.current_task.person_id
 
 
-    def on_deliver_vaccine(self):
+    def on_deliver_vaccine(self): 
+        self.mover.move_forward(0.35)
+        rospy.sleep(0.5)
         rospy.loginfo(f"Vaccinating person - {self.current_task.person_id}")
         self.robot_arm.publish("extend")
         rospy.sleep(1) 
@@ -695,11 +700,11 @@ class MainNode:
         
 
     def on_qr_detected(self, data): 
-        # print(str(data.data)) 
+        print(str(data.data)[2:7]) 
         
         # check if detected QR is on the cylinder or face 
-        if (str(data.data)[0:5] == "https"): 
-            self.current_cy = str(data.data)
+        if (str(data.data)[2:7] == "https"): 
+            self.current_cy = str(data.data)[1:]
         else:
             self.current_data = str(data.data)
 
@@ -829,7 +834,6 @@ class MainNode:
                     temp = Point( point.x + x, point.y + y, 0)
                     if self.mover.is_valid(temp): 
                         if objekt.type == ObjectType.FACE: 
-                            # TODO: check normals
                             norm = np.array([objekt.norm_x, objekt.norm_y]) 
                             
                             current = np.array([temp.x, temp.y]) 
