@@ -238,7 +238,8 @@ class MainNode:
                         if self.current_task.state == FaceProcessState.FACE_CONVERSATOIN:
                             self.on_face_conversation()
 
-                        if self.current_task.state == FaceProcessState.CLINIC_CONVERSATOIN:
+                        if self.current_task.state == FaceProcessState.CLINIC_CONVERSATOIN: 
+                            print("Checking if it goes to clinic conversation")
                             self.on_clinic_conversation()
 
                         if self.current_task.state == FaceProcessState.PICK_UP_VACCINE:
@@ -296,7 +297,7 @@ class MainNode:
             elif task.state == FaceProcessState.FACE_CONVERSATOIN:
                 return self.objects[ObjectType.CYLINDER][task.cylinder_id]
 
-            elif task.state == FaceProcessState.CLINIC_CONVERSATOIN:
+            elif task.state == FaceProcessState.CLINIC_CONVERSATOIN: 
                 return self.objects[ObjectType.RING][task.ring_id]
 
             elif task.state == FaceProcessState.PICK_UP_VACCINE:
@@ -316,15 +317,23 @@ class MainNode:
 
         fi1 = math.atan2(object.y - robot_pose.position.y, object.x - robot_pose.position.x)
         initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi1), robot_pose.position.y + travel_distance * math.sin(fi1), 0.0)
+        
 
-        point = self.get_valid_point_near(initial_point)
+        point = self.get_valid_point_near(initial_point, object)
         if not point:
             rospy.logwarn(f"Couldn't find a valid point. Aborting task: id={object.id}")
             return False, None, None
 
-        # Orient to object
-        fi = math.atan2(object.y - point.y, object.x - point.x)
-        quat = transformations.quaternion_from_euler(0, 0, fi)
+        # Orient to object 
+        if (object.type == ObjectType.FACE): 
+            # turn a litle to the right of the face to detect QR code
+            print("Objekt je obraz")
+            fi = math.atan2(object.y - point.y, (object.x + 0.2) - point.x)
+            quat = transformations.quaternion_from_euler(0, 0, fi)
+        else:
+            print("Objekt NI obraz")
+            fi = math.atan2(object.y - point.y, object.x - point.x)
+            quat = transformations.quaternion_from_euler(0, 0, fi)
 
         return True, point, Quaternion(0, 0, quat[2], quat[3])
 
@@ -354,12 +363,12 @@ class MainNode:
             if task.type == TaskType.FACE_PROCESS:
                 person = self.objects[ObjectType.FACE][task.person_id]
                 if task.state == FaceProcessState.CLINIC_SEARCH and object.type == ObjectType.CYLINDER and person.doctor == object.color:
-                    task.cylinder_id = object.id
-                    task.state = FaceProcessState.CLINIC_CONVERSATOIN
+                    task.cylinder_id = object.id 
+                    task.state = FaceProcessState.FACE_CONVERSATOIN
                 
                 if task.state == FaceProcessState.VACCINE_SEARCH and object.type == ObjectType.RING and person.suitable_vaccine == object.color:
                     task.ring_id = object.id
-                    task.state = FaceProcessState.PICK_UP_VACCINE
+                    task.state = FaceProcessState.CLINIC_CONVERSATOIN
 
 
     #----------------------- OBJECT HANDLING --------------------------
@@ -388,8 +397,14 @@ class MainNode:
                 continue
 
             # Object exists if correct distance 
-            if dist < 1.4 :
-                return old_object
+            
+            # test -------> maby needs fix
+            if object.type == ObjectType.FACE:
+                if dist < 0.5: # TODO: test different values
+                    return old_object
+            else:
+                if dist < 1.4 :
+                    return old_object
 
 
     def update_object(self, old, new):
@@ -534,46 +549,76 @@ class MainNode:
         # person.age = 48.484848484848484
         #-------------------------------------------------------------- 
         
+        while(True):
+            if (self.current_data == ""):
+                self.mover.move_forward(-0.5)
+                print("Moving backwards")
+                rospy.sleep(3) 
+            else:
+                break
+                
 
         # Get person info 
         usr_data = self.current_data.split(",") 
         
-        print(usr_data)
+        # print(usr_data) 
+        
+        print("R: Have you already been vaccinated?")
 
         person.is_vaccinated = self.get_obj_property_enum(usr_data[2])
+        
+        if (person.is_vaccinated != ObjProperty.TRUE):
+            print("P: Yes")
+        else:
+            print("P: No")
+            
+        print("R: Who is your personal doctor?")
+        
         person.physical_exercise = int(usr_data[4][1:])
-        person.doctor = self.get_color_enum(usr_data[3][1:])
+        
+        person.doctor = self.get_color_enum(usr_data[3][1:]) 
+        
+        print("P: My personal doctor is: ", self.get_color_string(person.doctor))
         # person.suitable_vaccine = self.get_color_enum(usr_data[5]) 
         
         # check if age was detected 
         if self.current_age > -1: 
             person.age = self.current_age 
         else:
-            print("Couldn't detect age with digit extractor. Reading it from QR")
+            rospy.loginfo(f"Couldn't detect age with digit extractor. Reading it from QR")
             person.age = int(usr_data[1][1:])# self.current_age 
             
         # setting age to default value
         self.current_age = -1
         
-        print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age)
+        # print("Oseba: ", person.is_vaccinated, person.physical_exercise, person.doctor, person.age) 
+        
+        # setting current_data on default value 
+        self.current_data = ""
+        
+        if (person.is_vaccinated != ObjProperty.TRUE):
+            print("This person was already vaccinated. Finish current task")
+            self.current_task.state = FaceProcessState.FINISHED
+            self.current_task.finished = True
+        else:
+            # Check for suitable clinic
+            clinic_list = self.objects[ObjectType.CYLINDER]
+            for i in range(0, len(clinic_list)): 
+                # print("Doktor: ", clinic_list[i].color) 
+                # print("Osebni zdravnik trenutne osebe: ", person.doctor)
+                if clinic_list[i].color == person.doctor: 
+                    print("Going to suitable clinic")
+                    self.current_task.cylinder_id = i
+                    break 
 
-        # Check for suitable clinic
-        clinic_list = self.objects[ObjectType.CYLINDER]
-        for i in range(0, len(clinic_list)): 
-            # print("Doktor: ", clinic_list[i].color) 
-            # print("Osebni zdravnik trenutne osebe: ", person.doctor)
-            if clinic_list[i].color == person.doctor: 
-                print("Going to suitable clinic")
-                self.current_task.cylinder_id = i
-                break 
-
-        # No suitable clinc found
-        if self.current_task.cylinder_id == -1: 
-            print("No suitable clinic. Look more")
-            self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+            # No suitable clinc found
+            if self.current_task.cylinder_id == -1: 
+                print("No suitable clinic. Look more")
+                self.current_task.state = FaceProcessState.CLINIC_SEARCH 
 
 
     def on_clinic_conversation(self):
+        print("Testing if clinic_conversation is active")
         person = self.objects[ObjectType.FACE][self.current_task.person_id]
         cylinder = self.objects[ObjectType.CYLINDER][self.current_task.cylinder_id]
         
@@ -581,8 +626,14 @@ class MainNode:
         if cylinder.classificier == ObjProperty.UNKNOWN: 
             if self.current_cy == "":
                 print("Cylinder QR was not detected") 
-                # TODO: if the QR was not detected find better position
+                # TODO: if the QR was not detected find better position 
+                
+                # find another valid point and move there 
+                # rospy.loginfo("Looking for new position near cylinder") 
+                # self.mover.stop_robot()
+                
                 self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+                return
             else:
                 link = self.current_cy
                 # link = "https://box.vicos.si/rins/17.txt" TESTING
@@ -591,7 +642,7 @@ class MainNode:
         # Predict suitable vaccine
         predicted_vaccine = cylinder.classificier.predict([[person.age, person.physical_exercise]])[0]
         person.suitable_vaccine = self.get_vaccine_color(predicted_vaccine)
-        print("Person vaccine:", person.suitable_vaccine)
+        rospy.loginfo(f"R: Person needs vaccine:", person.suitable_vaccine)
         
         # put current_cy back to "" 
         self.current_cy = ""
@@ -600,18 +651,18 @@ class MainNode:
         vaccine_list = self.objects[ObjectType.RING]
         for i in range(0, len(vaccine_list)):
             if vaccine_list[i].color == person.suitable_vaccine:
+                print("R: Going to suitable vaccine")
                 self.current_task.ring_id = i
                 break 
 
         # No suitable vaccine found
         if self.current_task.ring_id == -1: 
+            print("R: No suitable vaccine. Look more")
             self.current_task.state = FaceProcessState.VACCINE_SEARCH
         
 
     def on_vaccine_pick_up(self): 
-        # TODO: approach the ring 
-        
-        print("Picking up the vaccine")
+        rospy.loginfo(f"Picking up the vaccine for the person - {self.current_task.person_id}")
         
         self.robot_arm.publish("ring")
         rospy.sleep(1) 
@@ -620,7 +671,9 @@ class MainNode:
         self.current_task.person_id
 
 
-    def on_deliver_vaccine(self):
+    def on_deliver_vaccine(self): 
+        self.mover.move_forward(0.35)
+        rospy.sleep(0.5)
         rospy.loginfo(f"Vaccinating person - {self.current_task.person_id}")
         self.robot_arm.publish("extend")
         rospy.sleep(1) 
@@ -643,14 +696,15 @@ class MainNode:
     def on_num_detected(self, data):
         age = str(data.x) + str(data.y)
         self.current_age = int(age) 
-        print("Age of person is: " + self.current_age)
+        #print("Age of person is: " + self.current_age)
         
 
     def on_qr_detected(self, data): 
-        # print(str(data.data)) 
+        # print(str(data.data)[2:7]) 
         
-        if (str(data.data)[0:5] == "https"): 
-            self.current_cy = str(data.data)
+        # check if detected QR is on the cylinder or face 
+        if (str(data.data)[2:7] == "https"): 
+            self.current_cy = str(data.data)[1:-1]
         else:
             self.current_data = str(data.data)
 
@@ -772,14 +826,27 @@ class MainNode:
         
         return ObjProperty.FALSE
 
-    def get_valid_point_near(self, point):
+    def get_valid_point_near(self, point, objekt):
         # Try with different offsets
         for offset in [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
             for x in [0, -offset, offset]:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
-                    if self.mover.is_valid(temp):
-                        return temp
+                    if self.mover.is_valid(temp): 
+                        if objekt.type == ObjectType.FACE: 
+                            norm = np.array([objekt.norm_x, objekt.norm_y]) 
+                            
+                            current = np.array([temp.x, temp.y]) 
+                            plane = np.array([objekt.x, objekt.y]) 
+                            
+                            p1 = np.array([current[0] - plane[0], current[1] - plane[1]])
+                            
+                            result = np.dot(norm, p1) 
+                            
+                            if (result > 0):
+                                return temp
+                        else:
+                            return temp
         
         return False
 
