@@ -704,7 +704,7 @@ class MainNode:
         
         # check if detected QR is on the cylinder or face 
         if (str(data.data)[2:7] == "https"): 
-            self.current_cy = str(data.data)[1:-1]
+            self.current_cy = str(data.data)[2:-1]
         else:
             self.current_data = str(data.data)
 
