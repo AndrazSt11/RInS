@@ -642,7 +642,7 @@ class MainNode:
         # Predict suitable vaccine
         predicted_vaccine = cylinder.classificier.predict([[person.age, person.physical_exercise]])[0]
         person.suitable_vaccine = self.get_vaccine_color(predicted_vaccine)
-        rospy.loginfo(f"R: Person needs vaccine:", person.suitable_vaccine)
+        print("R: Person needs vaccine:", person.suitable_vaccine)
         
         # put current_cy back to "" 
         self.current_cy = ""
@@ -704,7 +704,7 @@ class MainNode:
         
         # check if detected QR is on the cylinder or face 
         if (str(data.data)[2:7] == "https"): 
-            self.current_cy = str(data.data)[1:-1]
+            self.current_cy = str(data.data)[2:-1]
         else:
             self.current_data = str(data.data)
 
@@ -828,7 +828,7 @@ class MainNode:
 
     def get_valid_point_near(self, point, objekt):
         # Try with different offsets
-        for offset in [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
+        for offset in [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
             for x in [0, -offset, offset]:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
