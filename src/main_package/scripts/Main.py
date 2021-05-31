@@ -316,7 +316,7 @@ class MainNode:
         travel_distance = math.sqrt((object.x - robot_pose.position.x)**2 + (object.y - robot_pose.position.y)**2)
 
         fi1 = math.atan2(object.y - robot_pose.position.y, object.x - robot_pose.position.x)
-        initial_point = Point(robot_pose.position.x + travel_distance * math.cos(fi1), robot_pose.position.y + travel_distance * math.sin(fi1), 0.0)
+        initial_point = Point(object.x, object.y, 0.0)
         
 
         point = self.get_valid_point_near(initial_point, object)
@@ -522,9 +522,9 @@ class MainNode:
         rospy.loginfo(f"Wears mask? - {person.wears_mask}")
         if(person.wears_mask == ObjProperty.FALSE):
             s = "Please put on your mask!"
-            print("Please put on your mask!")
-            rospy.sleep(2)
             self.soundhandle.say(s, voice, volume)
+            print(s)
+            rospy.sleep(2)
 
         # Check social distancing
         social_distancing_list = self.is_social_distancing(person)
@@ -538,8 +538,8 @@ class MainNode:
                 self.taskId += 1
 
             s = "Please keep social distance!" 
+            self.soundhandle.say(s, voice, volume)
             rospy.sleep(2)
-            self.soundhandle.say(s, voice, volume) 
 
         #----------------------TESTING---------------------------------
         # person.is_vaccinated = ObjProperty,FALSE
@@ -826,18 +826,18 @@ class MainNode:
         
         return ObjProperty.FALSE
 
-    def get_valid_point_near(self, point, objekt):
+    def get_valid_point_near(self, point, object):
         # Try with different offsets
         for offset in [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
             for x in [0, -offset, offset]:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
                     if self.mover.is_valid(temp): 
-                        if objekt.type == ObjectType.FACE: 
-                            norm = np.array([objekt.norm_x, objekt.norm_y]) 
+                        if object.type == ObjectType.FACE: 
+                            norm = np.array([object.norm_x, object.norm_y]) 
                             
                             current = np.array([temp.x, temp.y]) 
-                            plane = np.array([objekt.x, objekt.y]) 
+                            plane = np.array([object.x, object.y]) 
                             
                             p1 = np.array([current[0] - plane[0], current[1] - plane[1]])
                             

@@ -41,7 +41,7 @@ class DigitExtractor:
         self.image_sub = rospy.Subscriber("/camera/rgb/image_raw", Image, self.image_callback) 
         
         # Detection publisher
-        self.detection_publisher = rospy.Publisher('num_detection', Detected_number);
+        self.detection_publisher = rospy.Publisher('num_detection', Detected_number, queue_size=1000);
 
     def image_callback(self,data):
         # print('Iam here!')

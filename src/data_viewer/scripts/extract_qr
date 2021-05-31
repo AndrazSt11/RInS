@@ -43,7 +43,7 @@ class QRExtractor:
         self.image_sub = rospy.Subscriber("/camera/rgb/image_raw", Image, self.image_callback) 
         
         # Detection publisher
-        self.detection_publisher = rospy.Publisher('qr_detection', Data);
+        self.detection_publisher = rospy.Publisher('qr_detection', Data, queue_size=1000)
 
     def image_callback(self,data):
         # print('Iam here!')
@@ -72,7 +72,7 @@ class QRExtractor:
                 hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
                 hull = list(map(tuple, np.squeeze(hull)))
             else : 
-                hull = points;
+                hull = points
              
             ## Number of points in the convex hull
             n = len(hull)
