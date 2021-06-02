@@ -193,8 +193,8 @@ class The_Ring:
 
             print("Depth diff:", depth_diff)
             
-            # if math.isnan(depth_diff):
-            if depth_diff > 0.1:
+            if math.isnan(depth_diff):
+            # if depth_diff > 0.1:
                 print("Candidate", candidateNumber, "is true ring.")
 
                 # Detect color
