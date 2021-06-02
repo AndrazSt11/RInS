@@ -239,6 +239,7 @@ class MainNode:
 
             if success:
                 self.state = State.BUSY
+                self.did_approach = False
                 self.mover.move_to(point, quat, force_reach=False)
             else:
                 # self.abort_task(self.current_task)
@@ -252,6 +253,11 @@ class MainNode:
         if self.state == State.BUSY:
             if not self.mover.traveling:
                 if self.current_task:
+
+                    if not self.did_approach:
+                        self.did_approach = True
+                        self.mover.move_forward(0.4)
+                        rospy.sleep(1.7)
 
                     if self.current_task.type == TaskType.FACE_PROCESS:
                         self.current_task.state += 1
@@ -606,9 +612,9 @@ class MainNode:
         # trying to detect qr code sequence
         if (self.current_data == ""):
             rospy.logwarn("Couldn't read QR code, readjusting")
-            for forward in [0.35, -0.85]:
+            for forward in [0.5, -0.65]:
                 self.mover.move_forward(forward)
-                rospy.sleep(1.5)
+                rospy.sleep(1.7)
 
                 for deg in [50, -50, -50, 50]:
                     self.mover.rotate_deg(deg)
@@ -624,7 +630,7 @@ class MainNode:
                 print("couldn't detect qr code, reaproaching")
                 self.mover.rotate_deg(0)
                 rospy.sleep(.25)
-                self.mover.move_forward(-0.35)
+                self.mover.move_forward(-0.25)
                 self.current_task.state -= 1
                 rospy.sleep(1)
                 self.mover.move_forward(0)
@@ -905,8 +911,8 @@ class MainNode:
     def get_valid_point_near(self, point, object):
         # Try with different offsets
         for offset in [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.8]:
-            for x in [0, offset/2, -offset/2, -offset, offset]:
-                for y in [0, offset/2, -offset/2, -offset, offset]:
+            for x in [0, offset/2, offset, -offset/2, -offset]:
+                for y in [0, offset/2, offset, -offset/2, -offset]:
                     temp = Point( point.x + x, point.y + y, 0)
                     if self.mover.is_valid(temp): 
                         if object.type == ObjectType.FACE: 
