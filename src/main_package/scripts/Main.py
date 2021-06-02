@@ -729,7 +729,6 @@ class MainNode:
                     self.mover.rotate_deg(0)
                     rospy.sleep(.25)
                     self.mover.move_forward(-0.25)
-                    self.current_task.state -= 1
                     rospy.sleep(1)
                     self.mover.move_forward(0)
 
