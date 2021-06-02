@@ -120,7 +120,7 @@ def transform_world_to_map(x,y, shape):
 
 
 def is_point_valid(x, y, image_data):
-    distance_from_edge = 7
+    distance_from_edge = 8
     x1, y1 = transform_world_to_map(x, y, image_data.shape)
     if (image_data.shape[0] > x1 and image_data.shape[1] > y1):
 
@@ -146,6 +146,8 @@ def get_map_points(map_location):
     map_transform.transform.rotation = Quaternion(0,0,0,1)
 
     points = [transform_map_to_world(image_data.shape, map_transform, sc[0], sc[1]) for sc in square_centers]
+
+    print(transform_world_to_map(0.925, -0.49, image_data.shape)) # 262.5, 251.14000000000001
     return sorted([(p.x, p.y) for p in points], key=lambda p:atan2(p[0], p[1])), image_data
 
 

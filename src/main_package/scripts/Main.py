@@ -199,6 +199,7 @@ class MainNode:
 
 
     def before_execute(self):
+        # print(self.state)
         # print(self.tasks)
         # print(self.objects)
         if self.is_stuck():
@@ -268,6 +269,8 @@ class MainNode:
                         if self.current_task.state == FaceProcessState.DELIVER_VACCINE:
                             self.on_deliver_vaccine()
 
+                        self.state = State.STATIONARY
+
 
                     elif self.current_task.type == TaskType.SOCIAL_DIST_WARN:
                         self.on_social_dist_warn_reached()
@@ -305,6 +308,11 @@ class MainNode:
 
 
     def is_stuck(self):
+        # check for traveling
+        if not self.mover.traveling:
+            self.pose_history.clear()
+            return False
+
         new_pose = self.mover.get_pose()
         
         # fill up the array before checking
@@ -363,14 +371,8 @@ class MainNode:
             return False, None, None      
 
         robot_pose = self.mover.get_pose()
-
-
-        travel_distance = math.sqrt((object.x - robot_pose.position.x)**2 + (object.y - robot_pose.position.y)**2)
-
-        fi1 = math.atan2(object.y - robot_pose.position.y, object.x - robot_pose.position.x)
         initial_point = Point(object.x, object.y, 0.0)
         
-
         point = self.get_valid_point_near(initial_point, object)
         if not point:
             rospy.logwarn(f"Couldn't find a valid point. Aborting task: id={object.id}")
@@ -604,7 +606,7 @@ class MainNode:
         # trying to detect qr code sequence
         if (self.current_data == ""):
             rospy.logwarn("Couldn't read QR code, readjusting")
-            for forward in [0.25, -0.5, 0.35]:
+            for forward in [-0.5, 0.85]:
                 self.mover.move_forward(forward)
                 rospy.sleep(1.5)
 
@@ -622,7 +624,7 @@ class MainNode:
                 print("couldn't detect qr code, reaproaching")
                 self.mover.rotate_deg(0)
                 rospy.sleep(.25)
-                self.mover.move_forward(-0.25)
+                self.mover.move_forward(-0.35)
                 self.current_task.state -= 1
                 rospy.sleep(1)
                 self.mover.move_forward(0)
