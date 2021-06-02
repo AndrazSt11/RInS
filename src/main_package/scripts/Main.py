@@ -266,14 +266,14 @@ class MainNode:
                         if self.current_task.state == FaceProcessState.FACE_CONVERSATOIN:
                             self.on_face_conversation()
 
-                        if self.current_task.state == FaceProcessState.CLINIC_CONVERSATOIN: 
+                        elif self.current_task.state == FaceProcessState.CLINIC_CONVERSATOIN: 
                             print("Checking if it goes to clinic conversation")
                             self.on_clinic_conversation()
 
-                        if self.current_task.state == FaceProcessState.PICK_UP_VACCINE:
+                        elif self.current_task.state == FaceProcessState.PICK_UP_VACCINE:
                             self.on_vaccine_pick_up()
 
-                        if self.current_task.state == FaceProcessState.DELIVER_VACCINE:
+                        elif self.current_task.state == FaceProcessState.DELIVER_VACCINE:
                             self.on_deliver_vaccine()
 
                         self.state = State.STATIONARY
