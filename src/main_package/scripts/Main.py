@@ -912,7 +912,7 @@ class MainNode:
         # Try with different offsets
         for offset in [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.8]:
             for x in [0, offset/2, offset, -offset/2, -offset]:
-                for y in [0, offset/2, offset, -offset/2, -offset]:
+                for y in [0, -offset/2, offset/2, offset, -offset]:
                     temp = Point( point.x + x, point.y + y, 0)
                     if self.mover.is_valid(temp): 
                         if object.type == ObjectType.FACE: 
