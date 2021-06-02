@@ -33,7 +33,9 @@ class Path():
         self.points = points
 
 
-    def get_next_point(self):
+    def get_next_point(self, force=False):
+        if force:
+            self.nextPoint += 1
         print(f"PATH POINT ID: {self.nextPoint}")
         return self.points[self.nextPoint][0], self.points[self.nextPoint][1]
 
@@ -117,9 +119,9 @@ class Mover():
 
 
     # for easier access
-    def move_to_next_point(self):
+    def move_to_next_point(self, force=False):
         if not self.traveling:
-            x, y = self.path.get_next_point()
+            x, y = self.path.get_next_point(force)
             moveToPoint = Point(x, y, 0.0)
 
             if not self.is_valid(moveToPoint):
@@ -176,7 +178,7 @@ class Mover():
             for x in [0, -offset, offset]:
                 for y in [0, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
-                    if self.mover.is_valid(temp):
+                    if self.is_valid(temp):
                         return temp
         
         return False

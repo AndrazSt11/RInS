@@ -205,7 +205,7 @@ class MainNode:
             rospy.logwarn("We're stuck - ADJUSTING position and retrying task")
             self.state = State.ADJUSTING
             self.mover.stop_robot()
-            self.mover.move_to_next_point()
+            self.mover.move_to_next_point(True)
             return
 
         if self.current_task:
@@ -604,14 +604,14 @@ class MainNode:
         # trying to detect qr code sequence
         if (self.current_data == ""):
             rospy.logwarn("Couldn't read QR code, readjusting")
-            for forward in [0, -0.25, 0.5, 0.-25]:
+            for forward in [-0.25, 0.5, 0.-25]:
                 self.mover.move_forward(forward)
-                rospy.sleep(1)
+                rospy.sleep(1.5)
 
                 for deg in [60, -60, -60, 60]:
                     self.mover.rotate_deg(deg)
                     
-                    rospy.sleep(1)
+                    rospy.sleep(1.25)
                     if (self.current_data != ""):
                         break
 
@@ -620,9 +620,12 @@ class MainNode:
 
             if (self.current_data == ""):
                 print("couldn't detect qr code, reaproaching")
+                self.mover.rotate_deg(0)
+                rospy.sleep(.25)
                 self.mover.move_forward(-0.25)
                 self.current_task.state -= 1
                 rospy.sleep(1)
+                self.mover.move_forward(0)
                 self.state = State.STATIONARY
 
                 return False
@@ -899,9 +902,9 @@ class MainNode:
 
     def get_valid_point_near(self, point, object):
         # Try with different offsets
-        for offset in [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]:
-            for x in [0, -offset, offset]:
-                for y in [0, -offset, offset]:
+        for offset in [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.8]:
+            for x in [0, offset/2, -offset/2, -offset, offset]:
+                for y in [0, offset/2, -offset/2, -offset, offset]:
                     temp = Point( point.x + x, point.y + y, 0)
                     if self.mover.is_valid(temp): 
                         if object.type == ObjectType.FACE: 
@@ -930,7 +933,7 @@ class MainNode:
             if((distance < 1.0) and (normal_compare > 0.06) and (current_person.id != person.id)):
                 social_dist_id.append(person.id)
 
-        return social_dist_id;
+        return social_dist_id
 
 
 def main():

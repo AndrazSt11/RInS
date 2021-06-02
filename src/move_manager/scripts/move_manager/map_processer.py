@@ -120,7 +120,7 @@ def transform_world_to_map(x,y, shape):
 
 
 def is_point_valid(x, y, image_data):
-    distance_from_edge = 7
+    distance_from_edge = 6
     x1, y1 = transform_world_to_map(x, y, image_data.shape)
     if (image_data.shape[0] > x1 and image_data.shape[1] > y1):
 
@@ -133,7 +133,7 @@ def is_point_valid(x, y, image_data):
 def get_map_points(map_location):
     image = Image.open(map_location)
     image_data = asarray(image)
-    square_size = 17
+    square_size = 18
 
     squares = sample_squares(image_data, square_size)
     square_centers = [ ((s[0] + s[2])/2, (s[1]+s[3])/2) for s in squares]
