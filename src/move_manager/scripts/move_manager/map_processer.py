@@ -120,7 +120,7 @@ def transform_world_to_map(x,y, shape):
 
 
 def is_point_valid(x, y, image_data):
-    distance_from_edge = 9
+    distance_from_edge = 8
     x1, y1 = transform_world_to_map(x, y, image_data.shape)
     if (image_data.shape[0] > x1 and image_data.shape[1] > y1):
 
