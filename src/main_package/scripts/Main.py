@@ -706,20 +706,41 @@ class MainNode:
         
         # Train classificier if necessary
         if cylinder.classificier == ObjProperty.UNKNOWN: 
-            if self.current_cy == "":
-                print("Cylinder QR was not detected") 
-                # TODO: if the QR was not detected find better position 
+            
+            # trying to detect qr code sequence
+            if (self.current_cy == ""):
+                rospy.logwarn("Couldn't read QR code, readjusting")
+                for forward in [0.5, -0.65]:
+                    self.mover.move_forward(forward)
+                    rospy.sleep(1.7)
+
+                    for deg in [50, -50, -50, 50]:
+                        self.mover.rotate_deg(deg)
+                        
+                        rospy.sleep(1.25)
+                        if (self.current_cy != ""):
+                            break
+
+                    if (self.current_cy != ""):
+                        break
+
+                if (self.current_cy == ""):
+                    print("couldn't detect qr code, reaproaching")
+                    self.mover.rotate_deg(0)
+                    rospy.sleep(.25)
+                    self.mover.move_forward(-0.25)
+                    self.current_task.state -= 1
+                    rospy.sleep(1)
+                    self.mover.move_forward(0)
+
+                    self.state = State.STATIONARY
+                    self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+                    return False
                 
-                # find another valid point and move there 
-                # rospy.loginfo("Looking for new position near cylinder") 
-                # self.mover.stop_robot()
-                
-                self.current_task.state = FaceProcessState.CLINIC_SEARCH 
-                return
-            else:
-                link = self.current_cy
-                # link = "https://box.vicos.si/rins/17.txt" TESTING
-                cylinder.classificier = self.train_classificier(link)
+
+            link = self.current_cy
+            # link = "https://box.vicos.si/rins/17.txt" TESTING
+            cylinder.classificier = self.train_classificier(link)
 
         # Predict suitable vaccine
         predicted_vaccine = cylinder.classificier.predict([[person.age, person.physical_exercise]])[0]
