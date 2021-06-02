@@ -606,7 +606,7 @@ class MainNode:
         # trying to detect qr code sequence
         if (self.current_data == ""):
             rospy.logwarn("Couldn't read QR code, readjusting")
-            for forward in [-0.5, 0.85]:
+            for forward in [0.35, -0.85]:
                 self.mover.move_forward(forward)
                 rospy.sleep(1.5)
 
