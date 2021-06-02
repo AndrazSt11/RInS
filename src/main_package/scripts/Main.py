@@ -118,6 +118,7 @@ class Task:
 
         self.finished = False
         self.aborted = False
+        self.ignore_for_loops = 0
 
 class FaceProcess(Task):
     def __init__(self, id, person_id):
@@ -410,6 +411,10 @@ class MainNode:
 
     def get_available_task(self):
         for task in self.tasks:
+            if task.ignore_for_loops > 0:
+                task.ignore_for_loops -= 1
+                continue
+
             if task.type == TaskType.SOCIAL_DIST_WARN:
                 if self.is_task_active(task): return task
 
@@ -627,11 +632,15 @@ class MainNode:
                     break
 
             if (self.current_data == ""):
-                print("couldn't detect qr code, reaproaching")
+                print("couldn't detect qr code, ignoring task for now")
                 self.mover.rotate_deg(0)
                 rospy.sleep(.25)
                 self.mover.move_forward(-0.25)
                 self.current_task.state -= 1
+
+                self.current_task.ignore_for_loops = 15
+                self.current_task = False
+
                 rospy.sleep(1)
                 self.mover.move_forward(0)
                 self.state = State.STATIONARY
@@ -725,7 +734,7 @@ class MainNode:
                         break
 
                 if (self.current_cy == ""):
-                    print("couldn't detect qr code, reaproaching")
+                    print("couldn't detect qr code, ignoring task for some time")
                     self.mover.rotate_deg(0)
                     rospy.sleep(.25)
                     self.mover.move_forward(-0.25)
@@ -733,7 +742,11 @@ class MainNode:
                     self.mover.move_forward(0)
 
                     self.state = State.STATIONARY
-                    self.current_task.state = FaceProcessState.CLINIC_SEARCH 
+                    self.current_task.state = FaceProcessState.CLINIC_SEARCH
+
+                    self.current_task.ignore_for_loops = 15
+                    self.current_task = False
+
                     return False
                 
 
