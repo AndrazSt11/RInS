@@ -35,7 +35,11 @@ class Path():
 
     def get_next_point(self, force=False):
         if force:
-            self.nextPoint += 1
+            if len(self.points) > self.nextPoint+1:
+                self.nextPoint += 1
+            else:
+                self.nextPoint = 0
+
         print(f"PATH POINT ID: {self.nextPoint}")
         return self.points[self.nextPoint][0], self.points[self.nextPoint][1]
 
