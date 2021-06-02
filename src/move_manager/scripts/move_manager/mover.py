@@ -196,3 +196,7 @@ class Mover():
     
     def move_forward(self, forward_speed):
         self.move_twist_publisher.publish(Twist(Vector3(forward_speed, 0.0, 0.0), Vector3(0.0, 0.0, 0.0)))
+
+    def rotate_deg(self, angle):
+        self.move_twist_publisher.publish(Twist(Vector3(0.0, 0.0, 0.0), Vector3(0.0, 0.0, (angle / 360.0) * 2 * 3.14)))
+

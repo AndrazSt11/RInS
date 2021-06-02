@@ -37,7 +37,8 @@ class State(Enum):
     EXPLORE = 2
     APPROACH = 3
     BUSY = 4
-    FINISH = 5
+    ADJUSTING = 5
+    FINISH = 6
 
 class TaskType(Enum):
     FACE_PROCESS = 1
@@ -174,6 +175,11 @@ class MainNode:
         
 
         self.mover = Mover()
+        self.move_less_than_to_get_suck = .1
+        self.rotate_less_than_to_get_suck = .085
+        self.pose_history_size = 4
+        self.pose_history = []
+
         self.mlpClf = joblib.load("./src/color_model/Models/MLPRGB.pkl") 
 
         # publisher for robot arm 
@@ -195,6 +201,12 @@ class MainNode:
     def before_execute(self):
         # print(self.tasks)
         # print(self.objects)
+        if self.is_stuck():
+            rospy.logwarn("We're stuck - ADJUSTING position and retrying task")
+            self.state = State.ADJUSTING
+            self.mover.stop_robot()
+            self.mover.move_to_next_point()
+            return
 
         if self.current_task:
             if self.is_task_active(self.current_task):
@@ -207,6 +219,11 @@ class MainNode:
 
     # Act based on current state
     def execute(self):
+
+        if self.state == State.ADJUSTING:
+            if not self.mover.traveling:
+                self.state = State.STATIONARY
+
 
         if self.state == State.STATIONARY or self.state == State.EXPLORE:
             if self.current_task:
@@ -224,7 +241,10 @@ class MainNode:
                 self.mover.move_to(point, quat, force_reach=False)
             else:
                 # self.abort_task(self.current_task)
-                self.tasks.remove(self.current_task) # TODO: better abortion of task!
+                if self.current_task in self.tasks:
+                    self.tasks.remove(self.current_task)
+                    self.current_task = False
+
                 self.state = State.STATIONARY
 
 
@@ -282,6 +302,38 @@ class MainNode:
                 print("Updated greet position")
                 self.mover.stop_robot()
                 self.mover.move_to(point, quat, force_reach=False)
+
+
+    def is_stuck(self):
+        new_pose = self.mover.get_pose()
+        
+        # fill up the array before checking
+        if len(self.pose_history) < self.pose_history_size:
+            self.pose_history.append(new_pose)
+            return False
+
+        # check position and rotation delta
+        avg_delta_pos = 0
+        avg_delta_rot = 0
+        for old_pose in self.pose_history:
+            avg_delta_pos += abs(old_pose.position.x - new_pose.position.x) + abs(old_pose.position.y - new_pose.position.y)
+            avg_delta_rot += abs(old_pose.orientation.x - new_pose.orientation.x) + abs(old_pose.orientation.y - new_pose.orientation.y) + abs(old_pose.orientation.z - new_pose.orientation.z) + abs(old_pose.orientation.w - new_pose.orientation.w)
+
+        avg_delta_pos /= self.pose_history_size
+        avg_delta_rot /= self.pose_history_size
+
+
+        if avg_delta_pos < self.move_less_than_to_get_suck and avg_delta_rot < self.rotate_less_than_to_get_suck:
+            print(avg_delta_pos, avg_delta_rot)
+            self.pose_history.clear()
+            return True
+
+        else:
+            self.pose_history.pop(0)
+            self.pose_history.append(new_pose)
+
+        return False
+
 
 
     #------------------------ TASK HANDLING ---------------------------
@@ -549,13 +601,32 @@ class MainNode:
         # person.age = 48.484848484848484
         #-------------------------------------------------------------- 
         
-        while(True):
+        # trying to detect qr code sequence
+        if (self.current_data == ""):
+            rospy.logwarn("Couldn't read QR code, readjusting")
+            for forward in [0, -0.25, 0.5, 0.-25]:
+                self.mover.move_forward(forward)
+                rospy.sleep(1)
+
+                for deg in [60, -60, -60, 60]:
+                    self.mover.rotate_deg(deg)
+                    
+                    rospy.sleep(1)
+                    if (self.current_data != ""):
+                        break
+
+                if (self.current_data != ""):
+                    break
+
             if (self.current_data == ""):
-                self.mover.move_forward(-0.5)
-                print("Moving backwards")
-                rospy.sleep(3) 
-            else:
-                break
+                print("couldn't detect qr code, reaproaching")
+                self.mover.move_forward(-0.25)
+                self.current_task.state -= 1
+                rospy.sleep(1)
+                self.state = State.STATIONARY
+
+                return False
+
                 
 
         # Get person info 
